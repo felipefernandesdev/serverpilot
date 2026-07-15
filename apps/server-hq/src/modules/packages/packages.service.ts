@@ -48,7 +48,7 @@ export class PackagesService {
         databases: dto.databases || 5,
         subdomains: dto.subdomains || 10,
         ftpAccounts: dto.ftpAccounts || 5,
-        ssl: dto.ssl !== undefined ? dto.ssl : true,
+        SSL: dto.ssl !== undefined ? dto.ssl : true,
         sshAccess: dto.sshAccess || false,
       },
     });

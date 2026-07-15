@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, Min } from 'clas
 export class CreatePackageDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsOptional()

@@ -3,20 +3,20 @@ import { IsString, IsEmail, MinLength, IsNotEmpty, IsOptional, IsUUID } from 'cl
 export class CreateAccountDto {
   @IsString()
   @IsNotEmpty()
-  username: string;
+  username!: string;
 
   @IsString()
   @MinLength(6)
   @IsNotEmpty()
-  password: string;
+  password!: string;
 
   @IsEmail()
   @IsNotEmpty()
-  domain: string;
+  domain!: string;
 
   @IsUUID()
   @IsNotEmpty()
-  packageId: string;
+  packageId!: string;
 
   @IsUUID()
   @IsOptional()

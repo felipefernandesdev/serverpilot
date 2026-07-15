@@ -32,7 +32,7 @@ async function main() {
       databases: 2,
       subdomains: 5,
       ftpAccounts: 2,
-      ssl: true,
+      SSL: true,
       sshAccess: false,
     },
     {
@@ -44,7 +44,7 @@ async function main() {
       databases: 10,
       subdomains: 25,
       ftpAccounts: 10,
-      ssl: true,
+      SSL: true,
       sshAccess: true,
     },
     {
@@ -56,7 +56,7 @@ async function main() {
       databases: 50,
       subdomains: 100,
       ftpAccounts: 50,
-      ssl: true,
+      SSL: true,
       sshAccess: true,
     },
   ];
