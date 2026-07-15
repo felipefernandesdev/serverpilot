@@ -1,0 +1,61 @@
+{
+  "name": "serverpilot",
+  "version": "1.0.0",
+  "description": "Modern web hosting control panel - cPanel/WHM alternative",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "ts-node prisma/seed.ts"
+  },
+  "keywords": [
+    "hosting",
+    "control-panel",
+    "cpanel",
+    "whm",
+    "server-management"
+  ],
+  "author": "Felipe Fernandes",
+  "license": "MIT",
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/config": "^3.2.0",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^11.1.28",
+    "@prisma/client": "^7.8.0",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.1",
+    "@types/passport-jwt": "^4.0.1",
+    "jest": "^30.4.2",
+    "prisma": "^7.8.0",
+    "turbo": "^2.0.0",
+    "ts-jest": "^29.4.11",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.0"
+  }
+}

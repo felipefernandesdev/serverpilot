@@ -1,0 +1,321 @@
+// ServerPilot - Prisma Schema
+// Supports PostgreSQL (production) and SQLite (development)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ServerHQ Models (Admin/WHM equivalent)
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          String    @default("user") // admin, reseller, user
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  packages      Package[]
+  resellerLimits ResellerLimit?
+
+  @@map("users")
+}
+
+model Package {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  diskSpace     Int       @default(1024) // MB
+  bandwidth     Int       @default(10240) // MB
+  emailAccounts Int       @default(10)
+  databases     Int       @default(5)
+  subdomains    Int       @default(10)
+  ftpAccounts   Int       @default(5)
+  SSL           Boolean   @default(true)
+  sshAccess     Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  createdBy     User?     @relation(fields: [createdById], references: [id])
+  createdById   String?
+
+  @@map("packages")
+}
+
+model Account {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  password      String
+  domain        String    @unique
+  documentRoot  String    @default("/home/{username}/public_html")
+  ipAddress     String?
+  isActive      Boolean   @default(true)
+  suspendedAt   DateTime?
+  suspendReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Resource usage
+  diskUsed      Int       @default(0) // MB
+  bandwidthUsed Int       @default(0) // MB
+  lastLoginAt   DateTime?
+
+  // Relations
+  user          User?     @relation(fields: [userId], references: [id])
+  userId        String?
+  package       Package?  @relation(fields: [packageId], references: [id])
+  packageId     String?
+  emailAccounts EmailAccount[]
+  databases     Database[]
+  subdomains    Subdomain[]
+  ftpAccounts   FtpAccount[]
+
+  @@map("accounts")
+}
+
+model ResellerLimit {
+  id            String    @id @default(cuid())
+  maxAccounts   Int       @default(10)
+  maxDiskSpace  Int       @default(10240) // MB total
+  maxBandwidth  Int       @default(102400) // MB total
+  usedAccounts  Int       @default(0)
+  usedDiskSpace Int       @default(0)
+  usedBandwidth Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], unique)
+  userId        String
+
+  @@map("reseller_limits")
+}
+
+// ============================================
+// SitePanel Models (cPanel equivalent)
+// ============================================
+
+model EmailAccount {
+  id            String    @id @default(cuid())
+  email         String    // user@domain.com
+  password      String
+  quota         Int       @default(1024) // MB
+  usedSpace     Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+  forwarders    EmailForwarder[]
+  filters       EmailFilter[]
+
+  @@unique([email, accountId])
+  @@map("email_accounts")
+}
+
+model EmailForwarder {
+  id            String    @id @default(cuid())
+  source        String    // forward@domain.com
+  destination   String    // destination@email.com
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  emailAccount  EmailAccount @relation(fields: [emailAccountId], references: [id])
+  emailAccountId String
+
+  @@map("email_forwarders")
+}
+
+model EmailFilter {
+  id            String    @id @default(cuid())
+  name          String
+ 规则          String    // contains, equals, regex
+  pattern       String
+  action        String    @default("discard") // discard, forward, pipe
+  destination   String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  emailAccount  EmailAccount @relation(fields: [emailAccountId], references: [id])
+  emailAccountId String
+
+  @@map("email_filters")
+}
+
+model Database {
+  id            String    @id @default(cuid())
+  name          String
+  type          String    @default("mysql") // mysql, postgresql
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+  users         DatabaseUser[]
+
+  @@unique([name, accountId])
+  @@map("databases")
+}
+
+model DatabaseUser {
+  id            String    @id @default(cuid())
+  username      String
+  password      String
+  privileges    String    @default("ALL PRIVILEGES")
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  database      Database  @relation(fields: [databaseId], references: [id])
+  databaseId    String
+
+  @@unique([username, databaseId])
+  @@map("database_users")
+}
+
+model Subdomain {
+  id            String    @id @default(cuid())
+  subdomain     String    // blog (creates blog.domain.com)
+  documentRoot  String
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+
+  @@unique([subdomain, accountId])
+  @@map("subdomains")
+}
+
+model FtpAccount {
+  id            String    @id @default(cuid())
+  username      String
+  password      String
+  homeDir       String
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+
+  @@unique([username, accountId])
+  @@map("ftp_accounts")
+}
+
+// ============================================
+// Shared Models
+// ============================================
+
+model DnsZone {
+  id            String    @id @default(cuid())
+  domain        String    @unique
+  nameservers   String    // comma-separated
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  records       DnsRecord[]
+
+  @@map("dns_zones")
+}
+
+model DnsRecord {
+  id            String    @id @default(cuid())
+  type          String    // A, AAAA, CNAME, MX, TXT, NS
+  name          String    // @, www, mail
+  value         String    // IP address, domain name
+  priority      Int       @default(0) // for MX records
+  ttl           Int       @default(3600)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  zone          DnsZone   @relation(fields: [zoneId], references: [id])
+  zoneId        String
+
+  @@map("dns_records")
+}
+
+model SslCertificate {
+  id            String    @id @default(cuid())
+  domain        String
+  certificate   String    // PEM format
+  privateKey    String    // PEM format
+  issuer        String    @default("Let's Encrypt")
+  expiresAt     DateTime
+  autoRenew     Boolean   @default(true)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("ssl_certificates")
+}
+
+model CronJob {
+  id            String    @id @default(cuid())
+  command       String
+  schedule      String    // cron expression
+  isActive      Boolean   @default(true)
+  lastRunAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+
+  @@map("cron_jobs")
+}
+
+model Backup {
+  id            String    @id @default(cuid())
+  type          String    @default("full") // full, partial, database
+  status        String    @default("pending") // pending, running, completed, failed
+  filePath      String?
+  fileSize      Int?      // bytes
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  account       Account   @relation(fields: [accountId], references: [id])
+  accountId     String
+
+  @@map("backups")
+}
+
+model AuditLog {
+  id            String    @id @default(cuid())
+  action        String    // create, update, delete, login, etc.
+  entityType    String    // account, email, database, etc.
+  entityId      String?
+  details       String?   // JSON string
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  user          User?     @relation(fields: [userId], references: [id])
+  userId        String?
+
+  @@map("audit_logs")
+}
