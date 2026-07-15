@@ -58,21 +58,36 @@ if [ ! -f ".seeded" ]; then
     echo "✅ Database seeded"
 fi
 
-# 7. Start ServerHQ
+# 7. Start ServerHQ in background
 echo ""
 echo "🚀 Starting ServerHQ on http://localhost:3001..."
+npm run dev --workspace=apps/server-hq &
+SERVER_HQ_PID=$!
+
+# 8. Start SitePanel in background
+echo "🚀 Starting SitePanel on http://localhost:3002..."
+PORT=3002 npm run dev --workspace=apps/site-panel &
+SITE_PANEL_PID=$!
+
 echo ""
 echo "=========================================="
 echo "  ServerPilot is ready!"
 echo ""
 echo "  ServerHQ API:  http://localhost:3001/api"
+echo "  SitePanel API: http://localhost:3002/api"
 echo "  Adminer (DB):  http://localhost:8080"
 echo "  Mailhog:       http://localhost:8025"
 echo ""
-echo "  Login:"
+echo "  ServerHQ Login (Admin):"
 echo "  Email:    admin@serverpilot.local"
 echo "  Password: admin123"
+echo ""
+echo "  SitePanel Login (Account):"
+echo "  Username: <account-username>"
+echo "  Password: <account-password>"
 echo "=========================================="
 echo ""
+echo "Press Ctrl+C to stop all services"
 
-npm run dev --workspace=apps/server-hq
+# Wait for both processes
+wait $SERVER_HQ_PID $SITE_PANEL_PID
