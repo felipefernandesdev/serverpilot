@@ -172,7 +172,7 @@ async function main() {
   console.log('✓ Email account:', email1.email);
 
   const email2 = await prisma.emailAccount.upsert({
-    where: { email_accountId: { email: ' contato@client01.com', accountId: clientAccount.id } },
+    where: { email_accountId: { email: 'contato@client01.com', accountId: clientAccount.id } },
     update: {},
     create: {
       email: 'contato@client01.com',
