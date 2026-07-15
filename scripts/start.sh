@@ -58,36 +58,55 @@ if [ ! -f ".seeded" ]; then
     echo "✅ Database seeded"
 fi
 
-# 7. Start ServerHQ in background
+# 7. Start ServerHQ API in background
 echo ""
-echo "🚀 Starting ServerHQ on http://localhost:3001..."
+echo "🚀 Starting ServerHQ API on http://localhost:3001..."
 npm run dev --workspace=apps/server-hq &
 SERVER_HQ_PID=$!
 
-# 8. Start SitePanel in background
-echo "🚀 Starting SitePanel on http://localhost:3002..."
+# 8. Start SitePanel API in background
+echo "🚀 Starting SitePanel API on http://localhost:3002..."
 PORT=3002 npm run dev --workspace=apps/site-panel &
 SITE_PANEL_PID=$!
+
+# 9. Start Admin Frontend in background
+echo "🚀 Starting Admin Frontend on http://localhost:3000..."
+npm run dev --workspace=apps/admin &
+ADMIN_PID=$!
+
+# 10. Start Web Frontend in background
+echo "🚀 Starting Web Frontend on http://localhost:3003..."
+npm run dev --workspace=apps/web &
+WEB_PID=$!
 
 echo ""
 echo "=========================================="
 echo "  ServerPilot is ready!"
 echo ""
-echo "  ServerHQ API:  http://localhost:3001/api"
-echo "  SitePanel API: http://localhost:3002/api"
-echo "  Adminer (DB):  http://localhost:8080"
-echo "  Mailhog:       http://localhost:8025"
+echo "  ┌─────────────────────────────────────┐"
+echo "  │  Frontend URLs:                      │"
+echo "  │  Admin (ServerHQ): localhost:3000    │"
+echo "  │  Client (SitePanel): localhost:3003  │"
+echo "  ├─────────────────────────────────────┤"
+echo "  │  Backend APIs:                       │"
+echo "  │  ServerHQ API: localhost:3001        │"
+echo "  │  SitePanel API: localhost:3002       │"
+echo "  ├─────────────────────────────────────┤"
+echo "  │  Services:                           │"
+echo "  │  Adminer (DB): localhost:8080        │"
+echo "  │  Mailhog: localhost:8025             │"
+echo "  └─────────────────────────────────────┘"
 echo ""
-echo "  ServerHQ Login (Admin):"
-echo "  Email:    admin@serverpilot.local"
-echo "  Password: admin123"
+echo "  Admin Login:"
+echo "    Email:    admin@serverpilot.local"
+echo "    Password: admin123"
 echo ""
-echo "  SitePanel Login (Account):"
-echo "  Username: <account-username>"
-echo "  Password: <account-password>"
+echo "  Client Login:"
+echo "    Username: client01"
+echo "    Password: client123"
 echo "=========================================="
 echo ""
 echo "Press Ctrl+C to stop all services"
 
-# Wait for both processes
-wait $SERVER_HQ_PID $SITE_PANEL_PID
+# Wait for all processes
+wait $SERVER_HQ_PID $SITE_PANEL_PID $ADMIN_PID $WEB_PID
