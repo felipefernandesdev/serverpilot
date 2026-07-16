@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Globe, HardDrive, Mail, Database, Activity,
-  LogOut, FolderOpen, Moon, Sun,
+  ExternalLink, FolderOpen,
 } from 'lucide-react';
 
 interface Account {
@@ -26,34 +26,44 @@ export default function DashboardPage() {
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dark, setDark] = useState(false);
+  const [showViewSite, setShowViewSite] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
     const accountData = localStorage.getItem('account');
-    if (!token || !accountData) { router.push('/login'); return; }
-    setAccount(JSON.parse(accountData));
-    setDark(document.documentElement.classList.contains('dark'));
+    if (accountData) setAccount(JSON.parse(accountData));
     setLoading(false);
-  }, [router]);
+  }, []);
 
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle('dark', next);
-    localStorage.setItem('theme', next ? 'dark' : 'light');
+  const handleOpenPreview = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setPreviewLoading(true);
+    try {
+      const res = await fetch('/api/site/preview/token', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to get preview token');
+      const data = await res.json();
+      window.open(`/api/site/preview?token=${data.token}`, '_blank');
+    } catch {
+      alert('Could not open site preview. Please try again.');
+    } finally {
+      setPreviewLoading(false);
+      setShowViewSite(false);
+    }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('account');
-    router.push('/login');
+  const handleOpenDomain = () => {
+    if (account?.domain) {
+      window.open(`http://${account.domain}`, '_blank');
+    }
+    setShowViewSite(false);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-50 dark:bg-surface-900">
+      <div className="flex items-center justify-center py-20">
         <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -65,32 +75,7 @@ export default function DashboardPage() {
     ? Math.round((account.bandwidthUsed / account.package.bandwidth) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
-      <header className="bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                <Globe className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <span className="font-bold text-xl text-surface-900 dark:text-white">SitePanel</span>
-                <span className="ml-2 text-sm text-surface-500 dark:text-surface-400">{account?.domain}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={toggleTheme} className="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition">
-                {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-              <button onClick={handleLogout} className="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition">
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <UsageCard
             icon={<HardDrive className="w-5 h-5" />}
@@ -117,8 +102,42 @@ export default function DashboardPage() {
             <QuickAction icon={<Mail className="w-5 h-5" />} label="Email" onClick={() => router.push('/email')} />
             <QuickAction icon={<Database className="w-5 h-5" />} label="Databases" onClick={() => router.push('/databases')} />
             <QuickAction icon={<Globe className="w-5 h-5" />} label="Subdomains" onClick={() => router.push('/subdomains')} />
+            <QuickAction icon={<ExternalLink className="w-5 h-5" />} label="View Site" onClick={() => setShowViewSite(true)} />
           </div>
         </div>
+
+        {showViewSite && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowViewSite(false)}>
+            <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-sm p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-surface-900 dark:text-white mb-2">View Your Site</h3>
+              <p className="text-sm text-surface-500 dark:text-surface-400 mb-6">Choose how to view your website.</p>
+              <div className="space-y-3">
+                <button onClick={handleOpenPreview} disabled={previewLoading}
+                  className="w-full flex items-center gap-4 p-4 border border-surface-200 dark:border-surface-700 rounded-xl hover:border-emerald-300 dark:hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition group disabled:opacity-50">
+                  <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition">
+                    <ExternalLink className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-surface-900 dark:text-white">{previewLoading ? 'Loading...' : 'Local Preview'}</p>
+                    <p className="text-xs text-surface-500 dark:text-surface-400">View via local preview (requires auth)</p>
+                  </div>
+                </button>
+                <button onClick={handleOpenDomain}
+                  className="w-full flex items-center gap-4 p-4 border border-surface-200 dark:border-surface-700 rounded-xl hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition group">
+                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-110 transition">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-surface-900 dark:text-white">Open Domain</p>
+                    <p className="text-xs text-surface-500 dark:text-surface-400">Open {account?.domain} directly</p>
+                  </div>
+                </button>
+              </div>
+              <button onClick={() => setShowViewSite(false)}
+                className="w-full mt-4 px-4 py-2.5 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 font-medium">Cancel</button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6">
           <h2 className="text-lg font-semibold text-surface-900 dark:text-white mb-4">Account Information</h2>
@@ -129,7 +148,6 @@ export default function DashboardPage() {
             <InfoItem label="Status" value="Active" badge="green" />
           </div>
         </div>
-      </main>
     </div>
   );
 }

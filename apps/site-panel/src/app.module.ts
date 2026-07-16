@@ -6,6 +6,7 @@ import { EmailModule } from './modules/email/email.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { DomainModule } from './modules/domain/domain.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { SitePreviewModule } from './modules/site-preview/site-preview.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
     DatabaseModule,
     DomainModule,
     MetricsModule,
+    SitePreviewModule,
   ],
 })
 export class AppModule {}
