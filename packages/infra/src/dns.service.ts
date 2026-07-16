@@ -1,5 +1,48 @@
-const PDNS_API = 'http://localhost:8081/api/v1/servers/localhost';
+import * as http from 'http';
+
+const PDNS_API = 'http://127.0.0.1:8081/api/v1/servers/localhost';
 const PDNS_KEY = 'pdns_api_key_dev';
+
+const agent = new http.Agent({ keepAlive: false });
+
+function request(method: string, path: string, body?: object): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(path, PDNS_API);
+    const opts: http.RequestOptions = {
+      hostname: url.hostname,
+      port: Number(url.port) || 8081,
+      path: url.pathname + url.search,
+      method,
+      agent,
+      headers: {
+        'X-API-Key': PDNS_KEY,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    };
+
+    const req = http.request(opts, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data ? JSON.parse(data) : null);
+        } else {
+          console.warn(`[DNS] ${method} ${path} → ${res.statusCode}: ${data}`);
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.warn(`[DNS] Request error ${method} ${path}: ${err.message}`);
+      resolve(null);
+    });
+
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
 
 export interface DnsRecord {
   name: string;
@@ -10,24 +53,13 @@ export interface DnsRecord {
 
 export class DnsService {
   async createZone(domain: string): Promise<void> {
-    const body = {
+    await request('POST', `/zones`, {
       name: `${domain}.`,
       kind: 'Native',
       nameservers: ['ns1.serverpilot.local.'],
       soa_edit_api: 'DEFAULT',
       account: 'serverpilot',
-    };
-
-    const res = await fetch(`${PDNS_API}/zones`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(body),
     });
-
-    if (!res.ok && res.status !== 409) {
-      const text = await res.text();
-      console.warn(`[DNS] Failed to create zone ${domain}: ${text}`);
-    }
 
     await this.addRecord(domain, 'www', 'A', '127.0.0.1', 3600);
     await this.addRecord(domain, '@', 'A', '127.0.0.1', 3600);
@@ -36,27 +68,13 @@ export class DnsService {
   }
 
   async deleteZone(domain: string): Promise<void> {
-    const res = await fetch(`${PDNS_API}/zones/${domain}.`, {
-      method: 'DELETE',
-      headers: this.headers(),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.warn(`[DNS] Failed to delete zone ${domain}: ${text}`);
-    }
+    await request('DELETE', `/zones/${domain}.`);
   }
 
-  async addRecord(
-    zone: string,
-    name: string,
-    type: string,
-    content: string,
-    ttl = 3600,
-  ): Promise<void> {
+  async addRecord(zone: string, name: string, type: string, content: string, ttl = 3600): Promise<void> {
     const fqdn = name === '@' ? `${zone}.` : `${name}.${zone}.`;
 
-    const body = {
+    await request('PATCH', `/zones/${zone}.`, {
       rrsets: [{
         name: fqdn,
         type,
@@ -64,41 +82,25 @@ export class DnsService {
         changetype: 'REPLACE',
         records: [{ content, disabled: false, setptr: false }],
       }],
-    };
-
-    await fetch(`${PDNS_API}/zones/${zone}.`, {
-      method: 'PATCH',
-      headers: this.headers(),
-      body: JSON.stringify(body),
     });
   }
 
   async removeRecord(zone: string, name: string, type: string): Promise<void> {
     const fqdn = name === '@' ? `${zone}.` : `${name}.${zone}.`;
 
-    const body = {
+    await request('PATCH', `/zones/${zone}.`, {
       rrsets: [{
         name: fqdn,
         type,
         changetype: 'DELETE',
       }],
-    };
-
-    await fetch(`${PDNS_API}/zones/${zone}.`, {
-      method: 'PATCH',
-      headers: this.headers(),
-      body: JSON.stringify(body),
     });
   }
 
   async listRecords(zone: string): Promise<DnsRecord[]> {
-    const res = await fetch(`${PDNS_API}/zones/${zone}.`, {
-      headers: this.headers(),
-    });
+    const data = await request('GET', `/zones/${zone}.`);
+    if (!data) return [];
 
-    if (!res.ok) return [];
-
-    const data = await res.json();
     return (data.rrsets || []).map((rrset: any) => ({
       name: rrset.name.replace(`.${zone}.`, ''),
       type: rrset.type,
@@ -108,13 +110,5 @@ export class DnsService {
         disabled: r.disabled || false,
       })),
     }));
-  }
-
-  private headers(): Record<string, string> {
-    return {
-      'X-API-Key': PDNS_KEY,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    };
   }
 }

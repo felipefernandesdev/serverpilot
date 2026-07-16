@@ -1,0 +1,20 @@
+sql_driver = pgsql
+
+pgsql host.containers.internal {
+  parameters {
+    host = host.containers.internal
+    port = 5432
+    user = serverpilot
+    password = serverpilot
+    dbname = serverpilot
+  }
+}
+
+passdb sql {
+  default_password_scheme = BLF-CRYPT
+  query = SELECT email AS user, password AS password FROM email_accounts WHERE email='%{user}' AND is_active=true
+}
+
+userdb sql {
+  query = SELECT '/srv/mail/%{user|domain}/%{user|username}' AS home, 'maildir' AS mail_driver, '/srv/mail/%{user|domain}/%{user|username}' AS mail_path
+}

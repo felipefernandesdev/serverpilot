@@ -1,9 +1,8 @@
 version: '3.8'
 
 services:
-  # PostgreSQL for production-like development
   postgres:
-    image: postgres:16-alpine
+    image: docker.io/postgres:16-alpine
     container_name: serverpilot-postgres
     restart: unless-stopped
     ports:
@@ -20,9 +19,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis for caching and sessions
   redis:
-    image: redis:7-alpine
+    image: docker.io/redis:7-alpine
     container_name: serverpilot-redis
     restart: unless-stopped
     ports:
@@ -36,21 +34,19 @@ services:
       timeout: 5s
       retries: 5
 
-  # Mailhog for email testing (development SMTP capture)
   mailhog:
-    image: mailhog/mailhog:latest
+    image: docker.io/mailhog/mailhog:latest
     container_name: serverpilot-mailhog
     restart: unless-stopped
     ports:
-      - '1025:1025'  # SMTP
-      - '8025:8025'  # Web UI
+      - '1025:1025'
+      - '8025:8025'
     environment:
       MH_API_BIND_ADDR: ':8025'
       MH_SMTP_BIND_ADDR: ':1025'
 
-  # Adminer for database management
   adminer:
-    image: adminer:latest
+    image: docker.io/adminer:latest
     container_name: serverpilot-adminer
     restart: unless-stopped
     ports:
@@ -60,26 +56,23 @@ services:
 
   # ===========================================================================
   # SERVER INFRASTRUCTURE (managed by the control panel)
+  # NOTE: privileged ports (<1024) are remapped for rootless Podman
   # ===========================================================================
 
-  # Nginx web server — serves client sites via virtual hosts
   nginx:
-    image: nginx:alpine
+    image: docker.io/nginx:alpine
     container_name: serverpilot-nginx
     restart: unless-stopped
     ports:
-      - '80:80'
-      - '443:443'
+      - '8082:80'     # HTTP (remapped from 80)
+      - '8443:443'    # HTTPS (remapped from 443)
     volumes:
-      - nginx_vhosts:/etc/nginx/conf.d    # vhost configs (written by app)
-      - site_data:/var/www                # document roots
+      - nginx_vhosts:/etc/nginx/conf.d
+      - site_data:/var/www
       - nginx_logs:/var/log/nginx
-    depends_on:
-      - postgres
 
-  # MariaDB — database server for client provisioning
   mariadb:
-    image: mariadb:lts
+    image: docker.io/mariadb:lts
     container_name: serverpilot-mariadb
     restart: unless-stopped
     ports:
@@ -95,48 +88,40 @@ services:
       timeout: 5s
       retries: 5
 
-  # Postfix SMTP server — receives/delivers email for client domains
   postfix:
-    image: ubuntu/postfix:latest
+    image: docker.io/catatnight/postfix:latest
     container_name: serverpilot-postfix
     restart: unless-stopped
     ports:
-      - '25:25'
-      - '587:587'
+      - '2525:25'     # SMTP (remapped from 25)
+      - '2587:587'    # Submission (remapped from 587)
     environment:
-      POSTFIX_HOSTNAME: mail.serverpilot.local
-      POSTFIX_MYORIGIN: serverpilot.local
-      POSTFIX_MYDESTINATION: 'localhost, serverpilot.local'
-      POSTFIX_RELAYHOST: 'mailhog:1025'  # relay to mailhog in dev
+      maildomain: serverpilot.local
+      smtp_user: 'mailuser:mailpass'
+      relayhost: 'mailhog:1025'
     volumes:
       - postfix_config:/etc/postfix
       - postfix_spool:/var/spool/postfix
     depends_on:
       - mailhog
-      - dovecot
 
-  # Dovecot IMAP server — mailbox storage and IMAP/POP3 access
   dovecot:
     image: docker.io/eilandert/dovecot:latest
     container_name: serverpilot-dovecot
     restart: unless-stopped
     ports:
-      - '143:143'
-      - '993:993'
+      - '1430:143'    # IMAP (remapped from 143)
+      - '9993:993'    # IMAPS (remapped from 993)
     volumes:
       - mail_data:/srv/mail
-      - ./dovecot/10-auth.conf:/etc/dovecot/conf.d/10-auth.conf:ro
-      - ./dovecot/10-mail.conf:/etc/dovecot/conf.d/10-mail.conf:ro
-      - ./dovecot/10-master.conf:/etc/dovecot/conf.d/10-master.conf:ro
-      - ./dovecot/dovecot-sql.conf.ext:/etc/dovecot/dovecot-sql.conf.ext:ro
+      - ./dovecot/10-auth.conf:/etc/dovecot/conf.d/10-auth.conf:ro,Z
+      - ./dovecot/auth-sql.conf.ext:/etc/dovecot/conf.d/auth-sql.conf.ext:ro,Z
+      - ./dovecot/local.conf:/etc/dovecot/local.conf:ro,Z
     environment:
       TZ: UTC
-    depends_on:
-      - postgres
 
-  # SnappyMail — lightweight webmail client
   snappymail:
-    image: djmaze/snappymail:latest
+    image: docker.io/djmaze/snappymail:latest
     container_name: serverpilot-snappymail
     restart: unless-stopped
     ports:
@@ -144,28 +129,16 @@ services:
     volumes:
       - snappymail_data:/var/lib/snappymail
 
-  # PowerDNS — authoritative DNS server with REST API
   powerdns:
-    image: powerdns/pdns-auth-49:latest
+    image: docker.io/powerdns/pdns-auth-49:latest
     container_name: serverpilot-powerdns
     restart: unless-stopped
     ports:
-      - '53:53/tcp'
-      - '53:53/udp'
-      - '8081:8081'
-    environment:
-      PDNS_API_KEY: pdns_api_key_dev
-      PDNS_WEBSERVER_ADDRESS: 0.0.0.0
-      PDNS_WEBSERVER_PORT: 8081
-      PDNS_LAUNCH: gpgsql
-      PDNS_GPGSQL_HOST: postgres
-      PDNS_GPGSQL_PORT: 5432
-      PDNS_GPGSQL_USER: serverpilot
-      PDNS_GPGSQL_PASSWORD: serverpilot
-      PDNS_GPGSQL_DBNAME: serverpilot
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - '5354:5300/tcp' # DNS (remapped from 53, 5353 is mDNS)
+      - '5354:5300/udp' # DNS
+      - '8081:8081'     # API
+    volumes:
+      - ./powerdns/pdns.conf:/etc/powerdns/pdns.conf:ro,Z
 
 volumes:
   postgres_data:
