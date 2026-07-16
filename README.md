@@ -23,7 +23,7 @@ Modern web hosting control panel - cPanel/WHM alternative built with NestJS, Nex
 ## Tech Stack
 
 - **Backend**: NestJS with DDD Hexagonal Architecture
-- **Frontend**: Next.js + React
+- **Frontend**: Next.js + React + Tailwind CSS
 - **Database**: SQLite (dev) + PostgreSQL (prod)
 - **ORM**: Prisma
 - **Auth**: JWT + Refresh Token
@@ -34,35 +34,47 @@ Modern web hosting control panel - cPanel/WHM alternative built with NestJS, Nex
 ```
 serverpilot/
 ├── apps/
-│   ├── server-hq/          # WHM equivalent (admin)
-│   └── site-panel/         # cPanel equivalent (user)
+│   ├── admin/               # ServerHQ Frontend (Next.js)
+│   ├── web/                 # SitePanel Frontend (Next.js)
+│   ├── server-hq/           # ServerHQ API (NestJS)
+│   └── site-panel/          # SitePanel API (NestJS)
 ├── packages/
-│   ├── domain/             # Entities, value objects, ports
-│   ├── use-cases/          # Business logic
-│   ├── infra/              # Prisma, external services
-│   └── shared/             # Utilities
+│   ├── domain/              # Entities, value objects, ports
+│   ├── use-cases/           # Business logic
+│   ├── infra/               # Prisma, external services
+│   └── shared/              # Utilities
 ├── prisma/
-│   └── schema.prisma       # Database schema
+│   ├── schema.prisma        # Database schema
+│   └── seed.ts              # Seed data
 ├── docker/
-│   └── docker-compose.yml  # Development environment
-└── turbo.json              # Turborepo configuration
+│   └── docker-compose.yml   # Development environment
+└── scripts/
+    ├── start.sh             # Start all services
+    ├── stop.sh              # Stop all services
+    └── reset.sh             # Reset everything
 ```
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- npm or yarn
-- Docker (optional, for database)
+- Podman or Docker
 
-### Installation
+### One-Command Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/serverpilot.git
 cd serverpilot
 
+# Start everything (containers, deps, database, APIs, frontends)
+./scripts/start.sh
+```
+
+### Manual Setup
+
+```bash
 # Install dependencies
 npm install
 
@@ -75,49 +87,87 @@ npm run db:generate
 # Push schema to database
 npm run db:push
 
-# Start development servers
-npm run dev
+# Seed database (first time only)
+npm run db:seed
+
+# Start services
+npm run dev --workspace=apps/server-hq    # API on port 3001
+PORT=3002 npm run dev --workspace=apps/site-panel  # API on port 3002
+npm run dev --workspace=apps/admin        # Frontend on port 3000
+npm run dev --workspace=apps/web          # Frontend on port 3003
 ```
 
-### Development
+## Services & Ports
 
-```bash
-# Run all apps in development mode
-npm run dev
+| Service | Port | URL |
+|---------|------|-----|
+| Admin Frontend | 3000 | http://localhost:3000 |
+| ServerHQ API | 3001 | http://localhost:3001/api |
+| SitePanel API | 3002 | http://localhost:3002/api |
+| Client Frontend | 3003 | http://localhost:3003 |
+| Adminer (DB) | 8080 | http://localhost:8080 |
+| Mailhog (Email) | 8025 | http://localhost:8025 |
 
-# Run only ServerHQ
-npm run dev --workspace=apps/server-hq
+## Login Credentials
 
-# Run only SitePanel
-npm run dev --workspace=apps/site-panel
+### Admin (ServerHQ)
+- **URL**: http://localhost:3000
+- **Email**: admin@serverpilot.local
+- **Password**: admin123
 
-# Database operations
-npm run db:studio    # Open Prisma Studio
-npm run db:migrate   # Run migrations
-npm run db:seed      # Seed database
+### Client (SitePanel)
+- **URL**: http://localhost:3003
+- **Username**: client01
+- **Password**: client123
+
+## API Documentation
+
+### ServerHQ API
+
+```
+POST /api/auth/login          - Login
+POST /api/auth/refresh        - Refresh token
+POST /api/auth/logout         - Logout
+POST /api/auth/me             - Get profile
+
+GET  /api/accounts            - List accounts
+POST /api/accounts            - Create account
+GET  /api/accounts/:id        - Get account
+PUT  /api/accounts/:id        - Update account
+DELETE /api/accounts/:id      - Delete account
+POST /api/accounts/:id/suspend   - Suspend account
+POST /api/accounts/:id/unsuspend - Unsuspend account
+GET  /api/accounts/:id/usage     - Get usage stats
+
+GET  /api/packages            - List packages
+POST /api/packages            - Create package
+GET  /api/packages/:id        - Get package
+PUT  /api/packages/:id        - Update package
+DELETE /api/packages/:id      - Delete package
 ```
 
-### Testing
+### SitePanel API
 
-```bash
-# Run all tests
-npm test
+```
+POST /api/auth/login          - Login
+POST /api/auth/logout         - Logout
+POST /api/auth/me             - Get profile
 
-# Run tests for specific package
-npm test --workspace=packages/domain
-
-# Run tests with coverage
-npm test -- --coverage
+GET  /api/files               - List files
+GET  /api/files/content       - Get file content
+POST /api/files/mkdir         - Create directory
+POST /api/files/write         - Write file
+DELETE /api/files             - Delete file
+POST /api/files/rename        - Rename file
+GET  /api/files/download      - Download file
 ```
 
-### Building
+## Scripts
 
 ```bash
-# Build all packages
-npm run build
-
-# Build specific app
-npm run build --workspace=apps/server-hq
+./scripts/start.sh    # Start all services
+./scripts/stop.sh     # Stop all services
+./scripts/reset.sh    # Reset everything (with confirmation)
 ```
 
 ## Architecture
@@ -142,36 +192,6 @@ The project follows Domain-Driven Design with hexagonal architecture:
 - **Development**: SQLite (file-based, no setup needed)
 - **Production**: PostgreSQL (robust, scalable)
 
-## API Documentation
-
-### ServerHQ API
-
-```
-POST /api/auth/login          - Login
-POST /api/auth/refresh        - Refresh token
-GET  /api/accounts            - List accounts
-POST /api/accounts            - Create account
-GET  /api/accounts/:id        - Get account
-PUT  /api/accounts/:id        - Update account
-DELETE /api/accounts/:id      - Delete account
-POST /api/accounts/:id/suspend - Suspend account
-POST /api/accounts/:id/unsuspend - Unsuspend account
-GET  /api/packages            - List packages
-POST /api/packages            - Create package
-```
-
-### SitePanel API
-
-```
-POST /api/auth/login          - Login
-GET  /api/files               - List files
-POST /api/files/upload        - Upload file
-GET  /api/email               - List email accounts
-POST /api/email               - Create email account
-GET  /api/databases           - List databases
-POST /api/databases           - Create database
-```
-
 ## Contributing
 
 1. Fork the repository
@@ -183,10 +203,3 @@ POST /api/databases           - Create database
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Inspired by cPanel/WHM
-- Built with NestJS
-- Database management with Prisma
-- Frontend with Next.js
