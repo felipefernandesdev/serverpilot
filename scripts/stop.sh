@@ -5,43 +5,23 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
-echo "🛑 ServerPilot - Stopping all services..."
-echo ""
-
-# Navigate to project root
 cd "$PROJECT_DIR"
 
-# 1. Stop infrastructure containers
-echo "📦 Stopping infrastructure containers..."
-if command -v podman &> /dev/null; then
-    cd docker
-    podman compose down
-    cd ..
-    echo "✅ Containers stopped with Podman"
-elif command -v docker &> /dev/null; then
-    cd docker
-    docker compose down
-    cd ..
-    echo "✅ Containers stopped with Docker"
-else
-    echo "❌ Neither Docker nor Podman found!"
-    exit 1
-fi
+echo "Stopping ServerPilot..."
 
-# 2. Stop any running Node processes
-echo ""
-echo "🔌 Stopping Node.js processes..."
-pkill -f "ts-node.*serverpilot" 2>/dev/null || true
-pkill -f "node.*serverpilot" 2>/dev/null || true
-echo "✅ Node processes stopped"
+# 1. Stop Node.js processes
+echo "  Stopping dev servers..."
+pkill -f "ts-node.*server-hq" 2>/dev/null || true
+pkill -f "ts-node.*site-panel" 2>/dev/null || true
+pkill -f "next dev.*apps/admin" 2>/dev/null || true
+pkill -f "next dev.*apps/web" 2>/dev/null || true
+sleep 1
 
-# 3. Clean up
-echo ""
-echo "🧹 Cleaning up..."
-rm -f ".seeded"
+# 2. Stop containers
+echo "  Stopping containers..."
+CMD="docker"
+if command -v podman &>/dev/null; then CMD="podman"; fi
+cd docker && $CMD compose down && cd ..
 
 echo ""
-echo "=========================================="
-echo "  All services stopped!"
-echo "=========================================="
+echo "  All services stopped"
