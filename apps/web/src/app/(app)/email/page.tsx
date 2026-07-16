@@ -40,17 +40,28 @@ export default function EmailPage() {
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<EmailAccount | null>(null);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [editQuota, setEditQuota] = useState(1024);
+  const [editPassword, setEditPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState<Record<string, boolean>>({});
   const [generatedPassword, setGeneratedPassword] = useState('');
+  const [accountDomain, setAccountDomain] = useState('');
 
   const [form, setForm] = useState({
-    email: '', password: '', quota: 1024,
+    emailLocal: '', password: '', quota: 1024,
     forwardSource: '', forwardDest: '',
     filterName: '', filterRule: 'contains', filterPattern: '',
     filterAction: 'discard', filterDest: '',
   });
 
-  useEffect(() => { fetchEmails(); }, []);
+  useEffect(() => {
+    const acct = localStorage.getItem('account');
+    if (acct) {
+      const parsed = JSON.parse(acct);
+      setAccountDomain(parsed.domain || '');
+    }
+    fetchEmails();
+  }, []);
 
   const fetchEmails = async () => {
     const t = localStorage.getItem('token');
@@ -75,17 +86,40 @@ export default function EmailPage() {
   const handleCreateEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token || !accountDomain) return;
+    const fullEmail = `${form.emailLocal}@${accountDomain}`;
     try {
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ email: form.email, password: form.password, quota: form.quota }),
+        body: JSON.stringify({ email: fullEmail, password: form.password, quota: form.quota }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || 'Failed'); }
       setShowCreate(false);
-      setForm({ ...form, email: '', password: '', quota: 1024 });
+      setForm({ ...form, emailLocal: '', password: '', quota: 1024 });
       setGeneratedPassword('');
+      fetchEmails();
+    } catch (err: any) { setError(err.message); }
+  };
+
+  const handleEditEmail = async () => {
+    if (!selectedEmail) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const body: Record<string, unknown> = {};
+      if (editQuota !== selectedEmail.quota) body.quota = editQuota;
+      if (editPassword) body.password = editPassword;
+      if (Object.keys(body).length === 0) { setEditingEmail(false); return; }
+      const res = await fetch(`/api/email/${selectedEmail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message || 'Failed'); }
+      setEditingEmail(false);
+      setEditPassword('');
+      setSelectedEmail({ ...selectedEmail, quota: editQuota });
       fetchEmails();
     } catch (err: any) { setError(err.message); }
   };
@@ -191,8 +225,13 @@ export default function EmailPage() {
             <form onSubmit={handleCreateEmail} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Email Address</label>
-                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition dark:text-white" placeholder="user@domain.com" required />
+                <div className="flex items-center gap-2">
+                  <input type="text" value={form.emailLocal} onChange={(e) => setForm({ ...form, emailLocal: e.target.value })}
+                    className="flex-1 px-3 py-2.5 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition dark:text-white" placeholder="username" required />
+                  <span className="text-surface-500 dark:text-surface-400 text-lg font-medium">@</span>
+                  <input type="text" value={accountDomain} readOnly
+                    className="flex-1 px-3 py-2.5 border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400 rounded-xl cursor-not-allowed" />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Password</label>
@@ -244,6 +283,30 @@ export default function EmailPage() {
             </div>
 
             <div className="p-6 space-y-6">
+              {editingEmail ? (
+                <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl space-y-3">
+                  <h4 className="font-medium text-surface-900 dark:text-white">Edit Email Account</h4>
+                  <div>
+                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Quota (MB)</label>
+                    <input type="number" value={editQuota} onChange={(e) => setEditQuota(parseInt(e.target.value) || 1024)}
+                      className="w-full px-3 py-2 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 rounded-xl text-sm dark:text-white" min={1} max={102400} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">New Password (leave blank to keep current)</label>
+                    <input type="text" value={editPassword} onChange={(e) => setEditPassword(e.target.value)}
+                      className="w-full px-3 py-2 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 rounded-xl text-sm dark:text-white" placeholder="Leave blank to keep current" minLength={6} />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button onClick={() => setEditingEmail(false)} className="px-3 py-2 border border-surface-200 dark:border-surface-700 rounded-xl text-sm text-surface-700 dark:text-surface-300">Cancel</button>
+                    <button onClick={handleEditEmail} className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm">Save</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-end">
+                  <button onClick={() => { setEditingEmail(true); setEditQuota(currentEmail.quota); setEditPassword(''); }}
+                    className="px-3 py-1.5 border border-surface-200 dark:border-surface-700 rounded-xl text-sm text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700">Edit Settings</button>
+                </div>
+              )}
               <div>
                 <h4 className="font-medium text-surface-900 dark:text-white flex items-center gap-2 mb-3">
                   <Forward className="w-4 h-4" /> Forwarders
