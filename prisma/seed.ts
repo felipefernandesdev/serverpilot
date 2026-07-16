@@ -1,7 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
+const BASE_DIR = process.env.SERVERPILOT_DATA_DIR || path.join(__dirname, '..', 'data');
 
 async function main() {
   console.log('Seeding database...');
@@ -124,7 +127,7 @@ async function main() {
       username: 'client01',
       password: clientPassword,
       domain: 'client01.com',
-      documentRoot: '/home/client01/public_html',
+      documentRoot: path.join(BASE_DIR, 'client01', 'public_html'),
       isActive: true,
       packageId: starterPkg.id,
       userId: reseller.id,
@@ -145,7 +148,7 @@ async function main() {
       username: 'client02',
       password: client2Password,
       domain: 'client02.com',
-      documentRoot: '/home/client02/public_html',
+      documentRoot: path.join(BASE_DIR, 'client02', 'public_html'),
       isActive: true,
       packageId: proPkg.id,
       userId: reseller.id,
@@ -218,7 +221,7 @@ async function main() {
     update: {},
     create: {
       subdomain: 'blog',
-      documentRoot: '/home/client01/public_html/blog',
+      documentRoot: path.join(BASE_DIR, clientAccount.username, 'public_html', 'blog'),
       accountId: clientAccount.id,
     },
   });
@@ -229,11 +232,22 @@ async function main() {
     update: {},
     create: {
       subdomain: 'api',
-      documentRoot: '/home/client01/public_html/api',
+      documentRoot: path.join(BASE_DIR, clientAccount.username, 'public_html', 'api'),
       accountId: clientAccount.id,
     },
   });
   console.log('✓ Subdomain:', subdomain2.subdomain, '.', clientAccount.domain);
+
+  // ============================================
+  // Create filesystem directories for accounts
+  // ============================================
+  for (const acc of [clientAccount, client2Account]) {
+    const dir = path.join(BASE_DIR, acc.username, 'public_html');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'index.html'), `<h1>Welcome to ${acc.domain}</h1>\n<p>This is the site for ${acc.username}.</p>\n`);
+    fs.writeFileSync(path.join(dir, 'robots.txt'), 'User-agent: *\nDisallow:\n');
+    console.log('✓ Created directory:', dir);
+  }
 
   // ============================================
   // Summary
