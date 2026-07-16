@@ -99,14 +99,22 @@ npm run dev --workspace=apps/web          # Frontend on port 3003
 
 ## Services & Ports
 
-| Service | Port | URL |
-|---------|------|-----|
-| Admin Frontend | 3000 | http://localhost:3000 |
-| ServerHQ API | 3001 | http://localhost:3001/api |
-| SitePanel API | 3002 | http://localhost:3002/api |
-| Client Frontend | 3003 | http://localhost:3003 |
-| Adminer (DB) | 8080 | http://localhost:8080 |
-| Mailhog (Email) | 8025 | http://localhost:8025 |
+| Service | Port | URL | Container |
+|---------|------|-----|-----------|
+| Admin Frontend (ServerHQ) | 3000 | http://localhost:3000 | — |
+| ServerHQ API | 3001 | http://localhost:3001/api | — |
+| SitePanel API | 3002 | http://localhost:3002/api | — |
+| Client Frontend (SitePanel) | 3003 | http://localhost:3003 | — |
+| PostgreSQL (app DB) | 5432 | — | `serverpilot-postgres` |
+| Redis (cache) | 6379 | — | `serverpilot-redis` |
+| MariaDB (client DBs) | 3307 | — | `serverpilot-mariadb` |
+| Nginx (web server) | 80 | http://localhost | `serverpilot-nginx` |
+| Postfix (SMTP) | 25, 587 | — | `serverpilot-postfix` |
+| Dovecot (IMAP) | 143, 993 | — | `serverpilot-dovecot` |
+| SnappyMail (webmail) | 9001 | http://localhost:9001 | `serverpilot-snappymail` |
+| PowerDNS (DNS API) | 53, 8081 | http://localhost:8081/api | `serverpilot-powerdns` |
+| Adminer (DB GUI) | 8080 | http://localhost:8080 | `serverpilot-adminer` |
+| Mailhog (SMTP capture) | 1025, 8025 | http://localhost:8025 | `serverpilot-mailhog` |
 
 ## Login Credentials
 
@@ -165,7 +173,7 @@ GET  /api/files/download      - Download file
 ## Scripts
 
 ```bash
-./scripts/start.sh    # Start all services
+./scripts/start.sh    # Start all Docker containers + seed + dev servers
 ./scripts/stop.sh     # Stop all services
 ./scripts/reset.sh    # Reset everything (with confirmation)
 ```

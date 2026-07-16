@@ -1,12 +1,31 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
+import {
+  DockerExecService,
+  NginxService,
+  MailService,
+  DnsService,
+  DatabaseProvisioningService,
+} from '@serverpilot/infra';
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AccountsService.name);
+  private readonly nginx: NginxService;
+  private readonly mail: MailService;
+  private readonly dns: DnsService;
+  private readonly database: DatabaseProvisioningService;
+
+  constructor(private readonly prisma: PrismaService) {
+    const docker = new DockerExecService();
+    this.nginx = new NginxService(docker);
+    this.mail = new MailService(docker);
+    this.dns = new DnsService();
+    this.database = new DatabaseProvisioningService(docker);
+  }
 
   async findAll(page: number, limit: number) {
     const skip = (page - 1) * limit;
@@ -61,7 +80,6 @@ export class AccountsService {
   }
 
   async create(dto: CreateAccountDto) {
-    // Check if username exists
     const existingUsername = await this.prisma.account.findUnique({
       where: { username: dto.username },
     });
@@ -70,7 +88,6 @@ export class AccountsService {
       throw new ConflictException('Username already exists');
     }
 
-    // Check if domain exists
     const existingDomain = await this.prisma.account.findUnique({
       where: { domain: dto.domain },
     });
@@ -79,7 +96,6 @@ export class AccountsService {
       throw new ConflictException('Domain already exists');
     }
 
-    // Validate package exists
     const pkg = await this.prisma.package.findUnique({
       where: { id: dto.packageId },
     });
@@ -88,10 +104,8 @@ export class AccountsService {
       throw new NotFoundException('Package not found');
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // Create account
     const account = await this.prisma.account.create({
       data: {
         username: dto.username,
@@ -106,10 +120,9 @@ export class AccountsService {
       },
     });
 
-    // TODO: Execute server commands
-    // await this.serverService.createLinuxUser(dto.username, dto.password);
-    // await this.serverService.createDirectory(`/home/${dto.username}/public_html`);
-    // await this.serverService.createVirtualHost(dto.username, dto.domain);
+    await this.provisionInfrastructure(account.username, account.domain, dto.password).catch(
+      (err) => this.logger.error(`Infra provisioning failed for ${account.username}: ${err.message}`),
+    );
 
     return account;
   }
@@ -131,10 +144,9 @@ export class AccountsService {
   async remove(id: string) {
     const account = await this.findById(id);
 
-    // TODO: Execute server commands to remove account
-    // await this.serverService.deleteLinuxUser(account.username);
-    // await this.serverService.deleteDirectory(account.documentRoot);
-    // await this.serverService.deleteVirtualHost(account.username);
+    await this.deprovisionInfrastructure(account.username, account.domain).catch(
+      (err) => this.logger.error(`Infra deprovisioning failed for ${account.username}: ${err.message}`),
+    );
 
     await this.prisma.account.delete({
       where: { id },
@@ -156,8 +168,9 @@ export class AccountsService {
       },
     });
 
-    // TODO: Execute server commands to suspend account
-    // await this.serverService.suspendAccount(account.username);
+    await this.nginx.disableVhost(account.username).catch(
+      (err) => this.logger.warn(`Failed to disable vhost for ${account.username}: ${err.message}`),
+    );
 
     return updatedAccount;
   }
@@ -177,8 +190,9 @@ export class AccountsService {
       },
     });
 
-    // TODO: Execute server commands to unsuspend account
-    // await this.serverService.unsuspendAccount(account.username);
+    await this.nginx.enableVhost(account.username).catch(
+      (err) => this.logger.warn(`Failed to enable vhost for ${account.username}: ${err.message}`),
+    );
 
     return updatedAccount;
   }
@@ -218,5 +232,33 @@ export class AccountsService {
         limit: account.package?.ftpAccounts || 0,
       },
     };
+  }
+
+  private async provisionInfrastructure(username: string, domain: string, password: string): Promise<void> {
+    const results = await Promise.allSettled([
+      this.nginx.createVhost(username, domain),
+      this.mail.setupDomain(domain),
+      this.dns.createZone(domain),
+    ]);
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        this.logger.warn(`Provisioning step failed: ${result.reason}`);
+      }
+    }
+  }
+
+  private async deprovisionInfrastructure(username: string, domain: string): Promise<void> {
+    const results = await Promise.allSettled([
+      this.nginx.deleteVhost(username),
+      this.mail.removeDomain(domain),
+      this.dns.deleteZone(domain),
+    ]);
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        this.logger.warn(`Deprovisioning step failed: ${result.reason}`);
+      }
+    }
   }
 }

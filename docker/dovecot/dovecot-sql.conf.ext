@@ -1,0 +1,8 @@
+driver = pgsql
+connect = host=postgres dbname=serverpilot user=serverpilot password=serverpilot
+
+default_pass_scheme = BLF-CRYPT
+
+password_query = SELECT email AS user, password AS password FROM email_accounts WHERE email='%u' AND is_active=true
+
+user_query = SELECT '/srv/mail/%d/%n' AS home, 'maildir:/srv/mail/%d/%n' AS mail, 5000 AS uid, 5000 AS gid

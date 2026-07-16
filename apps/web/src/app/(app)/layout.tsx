@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Globe, LayoutDashboard, FolderOpen, Mail, Database,
   LogOut, Moon, Sun, ChevronLeft, ChevronRight,
-  HardDrive, Activity,
+  HardDrive, Activity, ExternalLink,
 } from 'lucide-react';
 
 interface Account {
@@ -18,12 +18,21 @@ interface Account {
   package?: { diskSpace: number; bandwidth: number; name: string };
 }
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: any;
+  external?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/files', label: 'File Manager', icon: FolderOpen },
   { href: '/email', label: 'Email', icon: Mail },
   { href: '/databases', label: 'Databases', icon: Database },
   { href: '/subdomains', label: 'Subdomains', icon: Globe },
+  { href: '/dns', label: 'DNS', icon: Globe },
+  { href: 'http://localhost:9001', label: 'Webmail', icon: ExternalLink, external: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -74,7 +83,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
           {navItems.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            const active = !item.external && (pathname === item.href || pathname.startsWith(item.href + '/'));
+            if (item.external) {
+              return (
+                <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-emerald-200 hover:bg-emerald-800 hover:text-white"
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+                </a>
+              );
+            }
             return (
               <Link key={item.href} href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${
