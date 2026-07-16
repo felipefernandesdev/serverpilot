@@ -4,10 +4,10 @@
   "description": "SitePanel - cPanel equivalent (user interface)",
   "private": true,
   "scripts": {
-    "dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "dev": "PORT=3002 ts-node -r tsconfig-paths/register src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "start:dev": "PORT=3002 ts-node -r tsconfig-paths/register src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },

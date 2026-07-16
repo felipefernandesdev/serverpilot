@@ -4,10 +4,10 @@
   "description": "ServerHQ - WHM equivalent (admin interface)",
   "private": true,
   "scripts": {
-    "dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "dev": "PORT=3001 ts-node -r tsconfig-paths/register src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "start:dev": "PORT=3001 ts-node -r tsconfig-paths/register src/main.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
     "test": "jest"
