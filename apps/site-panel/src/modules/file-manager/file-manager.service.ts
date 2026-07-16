@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -113,6 +113,24 @@ export class FileManagerService {
     await fs.rename(fullOldPath, fullNewPath);
 
     return { oldPath, newPath, renamed: true };
+  }
+
+  async uploadFile(accountId: string, requestedPath: string, file: Express.Multer.File) {
+    const account = await this.getAccount(accountId);
+    const basePath = account.documentRoot;
+    const fullPath = this.resolvePath(basePath, requestedPath);
+
+    await this.validatePath(basePath, fullPath);
+
+    const stats = await fs.stat(fullPath).catch(() => null);
+    if (stats && stats.isDirectory()) {
+      const filePath = path.join(fullPath, file.originalname);
+      await fs.writeFile(filePath, file.buffer);
+      return { path: requestedPath, file: file.originalname, size: file.size, uploaded: true };
+    }
+
+    await fs.writeFile(fullPath, file.buffer);
+    return { path: requestedPath, file: path.basename(fullPath), size: file.size, uploaded: true };
   }
 
   async downloadFile(accountId: string, requestedPath: string) {

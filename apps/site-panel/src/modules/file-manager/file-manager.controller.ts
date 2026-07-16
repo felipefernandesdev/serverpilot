@@ -9,8 +9,10 @@ import {
   Request,
   HttpCode,
   HttpStatus,
-  Param,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileManagerService } from './file-manager.service';
 
@@ -67,5 +69,16 @@ export class FileManagerController {
   @Get('download')
   async downloadFile(@Request() req: any, @Query('path') path: string) {
     return this.fileManagerService.downloadFile(req.user.sub, path);
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @HttpCode(HttpStatus.OK)
+  async uploadFile(
+    @Request() req: any,
+    @Query('path') path: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.fileManagerService.uploadFile(req.user.sub, path, file);
   }
 }
