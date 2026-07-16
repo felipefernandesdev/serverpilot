@@ -1,10 +1,10 @@
 import { InvalidDomainError } from '../errors';
 
 export class DomainName {
-  private readonly value: string;
+  private readonly _value: string;
 
   private constructor(domain: string) {
-    this.value = domain.toLowerCase().trim();
+    this._value = domain.toLowerCase().trim();
   }
 
   static create(domain: string): DomainName {
@@ -20,25 +20,25 @@ export class DomainName {
   }
 
   get root(): string {
-    const parts = this.value.split('.');
+    const parts = this._value.split('.');
     return parts[parts.length - 1];
   }
 
   get subdomain(): string | null {
-    const parts = this.value.split('.');
+    const parts = this._value.split('.');
     if (parts.length <= 2) return null;
     return parts.slice(0, -2).join('.');
   }
 
   get value(): string {
-    return this.value;
+    return this._value;
   }
 
   equals(other: DomainName): boolean {
-    return this.value === other.value;
+    return this._value === other._value;
   }
 
   toString(): string {
-    return this.value;
+    return this._value;
   }
 }

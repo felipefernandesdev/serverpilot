@@ -1,10 +1,10 @@
 import { InvalidDomainError } from '../errors';
 
 export class Email {
-  private readonly value: string;
+  private readonly _value: string;
 
   private constructor(email: string) {
-    this.value = email.toLowerCase().trim();
+    this._value = email.toLowerCase().trim();
   }
 
   static create(email: string): Email {
@@ -20,22 +20,22 @@ export class Email {
   }
 
   get local(): string {
-    return this.value.split('@')[0];
+    return this._value.split('@')[0];
   }
 
   get domain(): string {
-    return this.value.split('@')[1];
+    return this._value.split('@')[1];
   }
 
   get value(): string {
-    return this.value;
+    return this._value;
   }
 
   equals(other: Email): boolean {
-    return this.value === other.value;
+    return this._value === other._value;
   }
 
   toString(): string {
-    return this.value;
+    return this._value;
   }
 }

@@ -1,10 +1,10 @@
 import { InvalidDomainError } from '../errors';
 
 export class Username {
-  private readonly value: string;
+  private readonly _value: string;
 
   private constructor(username: string) {
-    this.value = username.toLowerCase().trim();
+    this._value = username.toLowerCase().trim();
   }
 
   static create(username: string): Username {
@@ -22,14 +22,14 @@ export class Username {
   }
 
   get value(): string {
-    return this.value;
+    return this._value;
   }
 
   equals(other: Username): boolean {
-    return this.value === other.value;
+    return this._value === other._value;
   }
 
   toString(): string {
-    return this.value;
+    return this._value;
   }
 }
