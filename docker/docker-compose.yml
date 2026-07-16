@@ -125,7 +125,7 @@ services:
     container_name: serverpilot-snappymail
     restart: unless-stopped
     ports:
-      - '9001:80'
+      - '9001:8888'
     volumes:
       - snappymail_data:/var/lib/snappymail
 

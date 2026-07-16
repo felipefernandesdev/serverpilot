@@ -1,6 +1,6 @@
 import * as http from 'http';
 
-const PDNS_API = 'http://127.0.0.1:8081/api/v1/servers/localhost';
+const PDNS_API = 'http://127.0.0.1:8081/api/v1/servers/localhost/';
 const PDNS_KEY = 'pdns_api_key_dev';
 
 const agent = new http.Agent({ keepAlive: false });
@@ -53,7 +53,7 @@ export interface DnsRecord {
 
 export class DnsService {
   async createZone(domain: string): Promise<void> {
-    await request('POST', `/zones`, {
+    await request('POST', `zones`, {
       name: `${domain}.`,
       kind: 'Native',
       nameservers: ['ns1.serverpilot.local.'],
@@ -68,13 +68,13 @@ export class DnsService {
   }
 
   async deleteZone(domain: string): Promise<void> {
-    await request('DELETE', `/zones/${domain}.`);
+    await request('DELETE', `zones/${domain}.`);
   }
 
   async addRecord(zone: string, name: string, type: string, content: string, ttl = 3600): Promise<void> {
     const fqdn = name === '@' ? `${zone}.` : `${name}.${zone}.`;
 
-    await request('PATCH', `/zones/${zone}.`, {
+    await request('PATCH', `zones/${zone}.`, {
       rrsets: [{
         name: fqdn,
         type,
@@ -88,7 +88,7 @@ export class DnsService {
   async removeRecord(zone: string, name: string, type: string): Promise<void> {
     const fqdn = name === '@' ? `${zone}.` : `${name}.${zone}.`;
 
-    await request('PATCH', `/zones/${zone}.`, {
+    await request('PATCH', `zones/${zone}.`, {
       rrsets: [{
         name: fqdn,
         type,
@@ -98,7 +98,7 @@ export class DnsService {
   }
 
   async listRecords(zone: string): Promise<DnsRecord[]> {
-    const data = await request('GET', `/zones/${zone}.`);
+    const data = await request('GET', `zones/${zone}.`);
     if (!data) return [];
 
     return (data.rrsets || []).map((rrset: any) => ({

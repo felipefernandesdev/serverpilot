@@ -1,79 +1,88 @@
 # ServerPilot — MEMORY
 
-## Sessão: 2026-07-16 (tarde)
+## Sessão: 2026-07-16
 
 ### Estado Atual
-- **Fase**: 3 (Admin funcional + dark mode)
+- **Fase**: 3 (Admin funcional + dark mode) / Infra Docker provisionando
 - **Branch**: `main`
-- **Último commit**: `f2bc7b1` — chore: remove .seeded from tracking
+- **Último commit**: `db06d32` — fix: docker infra configs and PowerDNS DnsService
+
+### Estrutura de Apps (NÃO CONFUNDIR)
+
+| Diretório | Nome no package.json | Função | Porta |
+|-----------|---------------------|--------|-------|
+| `apps/admin/` | `@serverpilot/admin` | **ServerHQ Admin** (WHM — admin) | 3000 |
+| `apps/web/` | `@serverpilot/web` | **SitePanel** (cPanel — cliente) | **3003** |
+| `apps/server-hq/` | `@serverpilot/server-hq` | API do Admin | 3001 |
+| `apps/site-panel/` | `@serverpilot/site-panel` | API do Cliente | 3002 |
+
+**IMPORTANTE:** `apps/web/` é o frontend do CLIENTE (SitePanel), não o admin. O admin fica em `apps/admin/`.
 
 ### O Que Foi Feito Nesta Sessão
-1. **PORT fix**: server-hq → 3001, site-panel → 3002 (scripts explicitos)
-2. **Admin sidebar + layout**: navegação lateral com Dashboard, Accounts, Packages
-3. **Admin Accounts page**: listagem, busca, criar, suspender/reativar, deletar
-4. **Admin Packages page**: grid de cards, criar/editar modal, deletar
-5. **Dark mode**: `darkMode: 'class'`, toggle no header/sidebar, sem FOUC
-6. **Visual melhorado**: cores consistentes (surface palette), animações, scrollbar customizada
 
-### O Que Foi Feito
-1. **Base desbloqueada**:
-   - `packageManager` adicionado ao `package.json` root
-   - `tsconfig.json` root corrigido (exclui `apps/*`)
-   - `tsconfig.json` criado para `apps/server-hq` e `apps/site-panel`
-   - `package.json` + `index.ts` barrel exports para pacotes compartilhados
-   - Paths wildcard no tsconfig (`@serverpilot/domain/*`)
-   - Value objects renomeados (`value` → `_value`)
-   - `JwtStrategy` registrado no ServerHQ AuthModule
-   - `npm install` + `npx tsc --noEmit` ✅
+**Correções de infraestrutura (Docker + provisionamento):**
 
-2. **Email Manager** (SitePanel):
-   - `email.service.ts` — CRUD + forwarders + filters com quota check
-   - `email.controller.ts` — 12 endpoints REST
-   - `dto/` — 4 DTOs com validação
-   - `email/page.tsx` — UI completa com modal de detalhes
+1. **Docker compose — todas as imagens corrigidas para rootless podman:**
+   - Postfix: `ubuntu/postfix` → `catatnight/postfix` (inacessível)
+   - Dovecot: removidos 10-mail.conf, 10-master.conf, dovecot-sql.conf.ext (formato Dovecot 2.3); adicionados `auth-sql.conf.ext` com `sql_driver=pgsql` root-level + `local.conf` com `mail_driver`/`mail_path`
+   - PowerDNS: env-var config ignorado pela imagem → montado `pdns.conf` com porta interna 5300 + API habilitada + schema SQL
+   - SnappyMail: porta interna é 8888, não 80 (corrigido `ports: 9001:8888`)
+   - SELinux: volumes bind mount com flag `:Z`
 
-3. **Database Console** (SitePanel):
-   - `database.service.ts` — CRUD + database users com quota check
-   - `database.controller.ts` — 7 endpoints REST
-   - `database.module.ts` — ativado
-   - `databases/page.tsx` — UI completa
+2. **`packages/infra/src/docker-exec.service.ts` — writeFile via pipe:**
+   - Heredoc `<< 'EOF'` não funcionava dentro de `podman exec sh -c "..."` porque `\n` virava literal dentro de `JSON.stringify`
+   - Solução: `execSync` com `input` piped via `-i` flag → `cat > ${path}` recebe stdin
 
-4. **Domain Manager** (SitePanel):
-   - `domain.service.ts` — CRUD subdomínios com quota check
-   - `domain.controller.ts` — 5 endpoints REST
-   - `domain.module.ts` — ativado
-   - `subdomains/page.tsx` — UI com URL preview
+3. **`packages/infra/src/dns.service.ts` — URL relativa sem leading `/`:**
+   - `new URL('/zones', baseComTrailingSlash)` produzia `http://.../zones` (perdia o path `/api/v1/servers/localhost`)
+   - Solução: remover `/` dos paths → `new URL('zones', base)` resolve corretamente
 
-5. **Dashboard** — links para email/databases/subdomains corrigidos
+4. **`packages/infra/src/nginx.service.ts` — escape de `$` no template literal:**
+   - `$uri`, `$document_root`, `$fastcgi_script_name` eram interpretados como variáveis JS
+   - Solução: `\${uri}`, `\$document_root`, `\$fastcgi_script_name`
 
-### Testado
-- ✅ SitePanel API sobe (36 rotas mapeadas)
-- ✅ ServerHQ API sobe (13 rotas mapeadas)
-- ✅ Login (client01/client123) retorna JWT
-- ✅ GET /api/email retorna 2 contas seeded
-- ✅ GET /api/databases retorna 1 DB seeded
-- ✅ GET /api/domains retorna 2 subdomínios seeded
+5. **DTO validation:**
+   - `CreateAccountDto` e `UpdateAccountDto`: `@IsUUID()` → `@IsString()`, `@IsEmail()` → `@Matches()` (para aceitar CUIDs e domínios)
+
+### Containers Docker rodando (10/10)
+- postgres, redis, mailhog, adminer, nginx, mariadb, postfix, dovecot, snappymail, powerdns
+- Todos saudáveis por horas
+
+### Provisionamento verificado
+- ✅ Nginx vhost criado com conteúdo válido + document root + reload
+- ✅ Zona DNS criada no PowerDNS com registros A, MX
+- ✅ SnappyMail acessível em http://localhost:9001
 
 ### Problemas Conhecidos
+- SnappyMail: precisa configurar admin (`/admin`) e criar domínio manualmente
+- Server Status page ainda mock
+- Postfix/Dovecot/SnappyMail stack não verificada end-to-end
+- Sem VPS deployment (rootful compose, TLS, systemd)
 - Sem testes (0% cobertura)
-- `packages/infra/` vazio
-- `packages/shared/` vazio
-- Metrics module é shell vazio
-- Reseller/Backup não implementados
-- `.env` commitado no git (dev apenas)
 
 ### Como iniciar
 ```bash
 cd projects/serverpilot
-npm run db:seed   # push schema + seed data
-npm run dev       # turbo: todos os 4 apps sobem juntos
+npm run db:seed       # push schema + seed data
+npm run dev           # turbo: sobe server-hq + site-panel
+# Frontends precisam ser iniciados separadamente:
+cd apps/admin && npx next dev -p 3000
+cd apps/web && npx next dev -p 3003
+
+# Infraestrutura Docker:
+cd docker && podman compose up -d
 ```
 
-| App | URL | Porta |
-|-----|-----|-------|
-| Admin (ServerHQ) | http://localhost:3000 | 3000 |
-| Admin API | http://localhost:3001/api | 3001 |
-| Client API | http://localhost:3002/api | 3002 |
-| Client (SitePanel) | http://localhost:3003 | 3003 |
+### URLs e Credenciais
 
-**Credenciais:** admin@serverpilot.local / admin123 (admin) — client01 / client123 (cliente)
+| Interface | URL | Usuário | Senha |
+|-----------|-----|---------|-------|
+| ServerHQ Admin | http://localhost:3000 | admin@serverpilot.local | admin123 |
+| SitePanel (cliente) | http://localhost:3003 | client01 | client123 |
+| API Admin | http://localhost:3001 | (JWT via /api/auth/login) | — |
+| API Cliente | http://localhost:3002 | (JWT via /api/auth/login) | — |
+| SnappyMail | http://localhost:9001 | (criar email account) | — |
+| MailHog (SMTP debug) | http://localhost:8025 | — | — |
+| Adminer (DB) | http://localhost:8080 | postgres/postgres | serverpilot |
+| PowerDNS API | http://localhost:8081 | X-API-Key: pdns_api_key_dev | — |
+| Nginx (sites) | http://localhost:8082 | — | — |

@@ -34,10 +34,10 @@ Modern web hosting control panel - cPanel/WHM alternative built with NestJS, Nex
 ```
 serverpilot/
 ├── apps/
-│   ├── admin/               # ServerHQ Frontend (Next.js)
-│   ├── web/                 # SitePanel Frontend (Next.js)
-│   ├── server-hq/           # ServerHQ API (NestJS)
-│   └── site-panel/          # SitePanel API (NestJS)
+│   ├── admin/               # ServerHQ Admin Frontend (Next.js) — port 3000
+│   ├── web/                 # SitePanel Client Frontend (Next.js) — port 3003 ⚠️
+│   ├── server-hq/           # ServerHQ API (NestJS) — port 3001
+│   └── site-panel/          # SitePanel API (NestJS) — port 3002
 ├── packages/
 │   ├── domain/              # Entities, value objects, ports
 │   ├── use-cases/           # Business logic
@@ -97,14 +97,25 @@ npm run dev --workspace=apps/admin        # Frontend on port 3000
 npm run dev --workspace=apps/web          # Frontend on port 3003
 ```
 
+## ⚠️ App Structure (common confusion)
+
+| Directory | package.json name | Function | Port |
+|-----------|-------------------|----------|------|
+| `apps/admin/` | `@serverpilot/admin` | **ServerHQ Admin** (WHM — admin panel) | **3000** |
+| `apps/web/` | `@serverpilot/web` | **SitePanel** (cPanel — client panel) | **3003** |
+| `apps/server-hq/` | `@serverpilot/server-hq` | Admin API (NestJS) | 3001 |
+| `apps/site-panel/` | `@serverpilot/site-panel` | Client API (NestJS) | 3002 |
+
+**`apps/web/` é o FRONTEND DO CLIENTE (SitePanel), NÃO o admin.** O admin fica em `apps/admin/`.
+
 ## Services & Ports
 
 | Service | Port | URL | Container |
 |---------|------|-----|-----------|
-| Admin Frontend (ServerHQ) | 3000 | http://localhost:3000 | — |
+| ServerHQ Admin (frontend) | 3000 | http://localhost:3000 | — |
 | ServerHQ API | 3001 | http://localhost:3001/api | — |
 | SitePanel API | 3002 | http://localhost:3002/api | — |
-| Client Frontend (SitePanel) | 3003 | http://localhost:3003 | — |
+| SitePanel Client (frontend) | **3003** | http://localhost:3003 | — |
 | PostgreSQL (app DB) | 5432 | — | `serverpilot-postgres` |
 | Redis (cache) | 6379 | — | `serverpilot-redis` |
 | MariaDB (client DBs) | 3307 | — | `serverpilot-mariadb` |

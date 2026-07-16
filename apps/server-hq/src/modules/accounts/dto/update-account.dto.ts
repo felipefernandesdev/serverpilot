@@ -1,11 +1,12 @@
-import { IsString, IsEmail, IsOptional, IsUUID, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber, Matches } from 'class-validator';
 
 export class UpdateAccountDto {
-  @IsEmail()
+  @IsString()
   @IsOptional()
+  @Matches(/^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)
   domain?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   packageId?: string;
 

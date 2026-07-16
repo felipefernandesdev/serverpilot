@@ -48,8 +48,12 @@ export class DockerExecService {
   }
 
   writeFile(container: keyof typeof CONTAINERS, path: string, content: string): void {
-    const escaped = content.replace(/'/g, "'\\''");
-    this.exec(container, `cat > ${path} << 'EOF'\n${content}\nEOF`);
+    const cname = CONTAINERS[container];
+    execSync(`${this.cmd} exec -i ${cname} sh -c 'cat > ${path}'`, {
+      input: content,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
   }
 
   mkdir(container: keyof typeof CONTAINERS, path: string): void {

@@ -1,4 +1,4 @@
-import { IsString, IsEmail, MinLength, IsNotEmpty, IsOptional, IsUUID } from 'class-validator';
+import { IsString, MinLength, IsNotEmpty, IsOptional, Matches } from 'class-validator';
 
 export class CreateAccountDto {
   @IsString()
@@ -10,15 +10,16 @@ export class CreateAccountDto {
   @IsNotEmpty()
   password!: string;
 
-  @IsEmail()
+  @IsString()
   @IsNotEmpty()
+  @Matches(/^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)
   domain!: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   packageId!: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   userId?: string;
 }
