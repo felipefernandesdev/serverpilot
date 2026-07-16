@@ -70,4 +70,9 @@ export class AccountsController {
   async getUsage(@Param('id') id: string) {
     return this.accountsService.getUsage(id);
   }
+
+  @Get(':id/dns')
+  async getDns(@Param('id') id: string) {
+    return this.accountsService.getDns(id);
+  }
 }

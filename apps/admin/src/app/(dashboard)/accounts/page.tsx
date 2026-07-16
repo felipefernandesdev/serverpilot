@@ -22,6 +22,35 @@ interface Account {
   user?: { id: string; email: string; name: string };
 }
 
+interface AccountDetail {
+  id: string;
+  username: string;
+  domain: string;
+  isActive: boolean;
+  suspendedAt: string | null;
+  suspendReason: string | null;
+  diskUsed: number;
+  bandwidthUsed: number;
+  createdAt: string;
+  package: PackageDetail | null;
+  emailAccounts: EmailAccount[];
+  databases: Database[];
+  subdomains: Subdomain[];
+  ftpAccounts: FtpAccount[];
+  cronJobs: CronJob[];
+  backups: Backup[];
+}
+
+interface EmailAccount { id: string; email: string; quota: number; usedSpace: number; isActive: boolean; createdAt: string; }
+interface Database { id: string; name: string; type: string; createdAt: string; }
+interface Subdomain { id: string; subdomain: string; documentRoot: string; createdAt: string; }
+interface FtpAccount { id: string; username: string; directory: string; isActive: boolean; }
+interface CronJob { id: string; command: string; schedule: string; isActive: boolean; }
+interface Backup { id: string; filename: string; size: number; createdAt: string; }
+interface PackageDetail { id: string; name: string; diskSpace: number; bandwidth: number; emailAccounts: number; databases: number; subdomains: number; ftpAccounts: number; }
+
+interface DnsRecord { name: string; type: string; ttl: number; records: { content: string; disabled: boolean }[]; }
+
 interface Package {
   id: string;
   name: string;
@@ -40,6 +69,10 @@ export default function AccountsPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Account | null>(null);
+  const [detailTab, setDetailTab] = useState('overview');
+  const [accountDetail, setAccountDetail] = useState<AccountDetail | null>(null);
+  const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const getToken = useCallback(() => {
@@ -69,6 +102,21 @@ export default function AccountsPage() {
     } finally {
       setLoading(false);
     }
+  }, [getToken]);
+
+  const fetchDetail = useCallback(async (id: string) => {
+    const t = getToken();
+    if (!t) return;
+    setLoadingDetail(true);
+    try {
+      const [detailRes, dnsRes] = await Promise.all([
+        fetch(`/api/accounts/${id}`, { headers: { Authorization: `Bearer ${t}` } }),
+        fetch(`/api/accounts/${id}/dns`, { headers: { Authorization: `Bearer ${t}` } }),
+      ]);
+      if (detailRes.ok) setAccountDetail(await detailRes.json());
+      if (dnsRes.ok) { const d = await dnsRes.json(); setDnsRecords(d.records || []); }
+    } catch { /* ignore */ }
+    finally { setLoadingDetail(false); }
   }, [getToken]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -276,7 +324,7 @@ export default function AccountsPage() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => setShowDetail(acc)}
+                        onClick={() => { setShowDetail(acc); setDetailTab('overview'); fetchDetail(acc.id); }}
                         className="p-2 text-surface-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition"
                         title="View details"
                       >
@@ -364,8 +412,8 @@ export default function AccountsPage() {
 
       {showDetail && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetail(null)}>
-          <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-lg p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
+          <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-surface-200 dark:border-surface-700">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold ${
                   showDetail.isActive
@@ -379,50 +427,181 @@ export default function AccountsPage() {
                   <p className="text-sm text-surface-500 dark:text-surface-400">{showDetail.domain}</p>
                 </div>
               </div>
-              <button onClick={() => setShowDetail(null)} className="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition">
+              <button onClick={() => { setShowDetail(null); setAccountDetail(null); }} className="p-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
-                  <div className="flex items-center gap-2 text-surface-500 dark:text-surface-400 text-sm mb-1">
-                    <HardDrive className="w-4 h-4" />
-                    Disk Usage
-                  </div>
-                  <p className="text-lg font-bold text-surface-900 dark:text-white">{showDetail.diskUsed} MB</p>
-                </div>
-                <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
-                  <div className="flex items-center gap-2 text-surface-500 dark:text-surface-400 text-sm mb-1">
-                    <Activity className="w-4 h-4" />
-                    Bandwidth
-                  </div>
-                  <p className="text-lg font-bold text-surface-900 dark:text-white">{showDetail.bandwidthUsed} MB</p>
-                </div>
-              </div>
-              <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl space-y-3">
-                <DetailRow label="Package" value={showDetail.package?.name || '-'} />
-                <DetailRow label="Reseller" value={showDetail.user?.name || '-'} />
-                <DetailRow label="Status" value={showDetail.isActive ? 'Active' : 'Suspended'} />
-                {showDetail.suspendReason && <DetailRow label="Suspend Reason" value={showDetail.suspendReason} />}
-                <DetailRow label="Created" value={new Date(showDetail.createdAt).toLocaleDateString()} />
-              </div>
+            <div className="flex border-b border-surface-200 dark:border-surface-700 px-6 gap-1">
+              {['overview', 'email', 'databases', 'subdomains', 'dns'].map((tab) => (
+                <button key={tab} onClick={() => setDetailTab(tab)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition -mb-[1px] ${
+                    detailTab === tab
+                      ? 'border-primary-600 text-primary-600 dark:text-primary-400 dark:border-primary-400'
+                      : 'border-transparent text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
+                  }`}>
+                  {tab === 'overview' && 'Overview'}
+                  {tab === 'email' && `Email (${accountDetail?.emailAccounts?.length || 0})`}
+                  {tab === 'databases' && `Databases (${accountDetail?.databases?.length || 0})`}
+                  {tab === 'subdomains' && `Subdomains (${accountDetail?.subdomains?.length || 0})`}
+                  {tab === 'dns' && `DNS (${dnsRecords.length})`}
+                </button>
+              ))}
             </div>
 
-            <div className="flex gap-3 mt-6">
-              {showDetail.isActive ? (
-                <button onClick={() => { const r = prompt('Reason:'); if (r) { handleSuspend(showDetail.id, r); setShowDetail(null); } }} className="flex-1 px-4 py-2.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition font-medium">
-                  Suspend
-                </button>
-              ) : (
-                <button onClick={() => { handleUnsuspend(showDetail.id); setShowDetail(null); }} className="flex-1 px-4 py-2.5 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/20 transition font-medium">
-                  Unsuspend
-                </button>
-              )}
-              <button onClick={() => { handleDelete(showDetail.id); }} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-medium">
-                Delete
-              </button>
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingDetail ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : detailTab === 'overview' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
+                      <div className="flex items-center gap-2 text-surface-500 dark:text-surface-400 text-sm mb-1">
+                        <HardDrive className="w-4 h-4" /> Disk Usage
+                      </div>
+                      <p className="text-xl font-bold text-surface-900 dark:text-white">{showDetail.diskUsed} MB</p>
+                      {accountDetail?.package && (
+                        <p className="text-xs text-surface-400 mt-1">of {accountDetail.package.diskSpace} MB limit</p>
+                      )}
+                    </div>
+                    <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
+                      <div className="flex items-center gap-2 text-surface-500 dark:text-surface-400 text-sm mb-1">
+                        <Activity className="w-4 h-4" /> Bandwidth
+                      </div>
+                      <p className="text-xl font-bold text-surface-900 dark:text-white">{showDetail.bandwidthUsed} MB</p>
+                      {accountDetail?.package && (
+                        <p className="text-xs text-surface-400 mt-1">of {accountDetail.package.bandwidth} MB limit</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl text-center">
+                      <Mail className="w-4 h-4 mx-auto text-surface-400 mb-1" />
+                      <p className="text-lg font-bold text-surface-900 dark:text-white">{accountDetail?.emailAccounts?.length || 0}</p>
+                      <p className="text-xs text-surface-500">Email</p>
+                    </div>
+                    <div className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl text-center">
+                      <Database className="w-4 h-4 mx-auto text-surface-400 mb-1" />
+                      <p className="text-lg font-bold text-surface-900 dark:text-white">{accountDetail?.databases?.length || 0}</p>
+                      <p className="text-xs text-surface-500">Databases</p>
+                    </div>
+                    <div className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl text-center">
+                      <Globe className="w-4 h-4 mx-auto text-surface-400 mb-1" />
+                      <p className="text-lg font-bold text-surface-900 dark:text-white">{accountDetail?.subdomains?.length || 0}</p>
+                      <p className="text-xs text-surface-500">Subdomains</p>
+                    </div>
+                    <div className="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl text-center">
+                      <Users className="w-4 h-4 mx-auto text-surface-400 mb-1" />
+                      <p className="text-lg font-bold text-surface-900 dark:text-white">{accountDetail?.ftpAccounts?.length || 0}</p>
+                      <p className="text-xs text-surface-500">FTP</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-surface-50 dark:bg-surface-900/50 rounded-xl space-y-2">
+                    <DetailRow label="Package" value={showDetail.package?.name || '-'} />
+                    <DetailRow label="Reseller" value={showDetail.user?.name || '-'} />
+                    <DetailRow label="Status" value={showDetail.isActive ? 'Active' : 'Suspended'} />
+                    {showDetail.suspendReason && <DetailRow label="Suspend Reason" value={showDetail.suspendReason} />}
+                    <DetailRow label="Created" value={new Date(showDetail.createdAt).toLocaleDateString()} />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    {showDetail.isActive ? (
+                      <button onClick={() => { const r = prompt('Reason:'); if (r) { handleSuspend(showDetail.id, r); setShowDetail(null); } }} className="flex-1 px-4 py-2.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition font-medium">
+                        Suspend
+                      </button>
+                    ) : (
+                      <button onClick={() => { handleUnsuspend(showDetail.id); setShowDetail(null); }} className="flex-1 px-4 py-2.5 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/20 transition font-medium">
+                        Unsuspend
+                      </button>
+                    )}
+                    <button onClick={() => { handleDelete(showDetail.id); }} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-medium">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : detailTab === 'email' ? (
+                <div className="space-y-3">
+                  {(accountDetail?.emailAccounts?.length || 0) === 0 ? (
+                    <p className="text-sm text-surface-400 italic text-center py-8">No email accounts</p>
+                  ) : (
+                    accountDetail!.emailAccounts.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
+                        <div>
+                          <p className="font-medium text-surface-900 dark:text-white">{e.email}</p>
+                          <p className="text-xs text-surface-500">{e.usedSpace} MB / {e.quota} MB used</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full ${e.isActive ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                          {e.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : detailTab === 'databases' ? (
+                <div className="space-y-3">
+                  {(accountDetail?.databases?.length || 0) === 0 ? (
+                    <p className="text-sm text-surface-400 italic text-center py-8">No databases</p>
+                  ) : (
+                    accountDetail!.databases.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
+                        <div>
+                          <p className="font-medium text-surface-900 dark:text-white">{d.name}</p>
+                          <p className="text-xs text-surface-500">{d.type}</p>
+                        </div>
+                        <span className="text-xs text-surface-400">{new Date(d.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : detailTab === 'subdomains' ? (
+                <div className="space-y-3">
+                  {(accountDetail?.subdomains?.length || 0) === 0 ? (
+                    <p className="text-sm text-surface-400 italic text-center py-8">No subdomains</p>
+                  ) : (
+                    accountDetail!.subdomains.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between p-3 bg-surface-50 dark:bg-surface-900/50 rounded-xl">
+                        <div>
+                          <p className="font-medium text-surface-900 dark:text-white">{s.subdomain}.{showDetail.domain}</p>
+                          <p className="text-xs text-surface-500">{s.documentRoot}</p>
+                        </div>
+                        <span className="text-xs text-surface-400">{new Date(s.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : detailTab === 'dns' ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-3">Zone: {showDetail.domain}</p>
+                  {dnsRecords.length === 0 ? (
+                    <p className="text-sm text-surface-400 italic text-center py-8">No DNS records</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-surface-200 dark:border-surface-700">
+                          <th className="text-left py-2 text-surface-500 font-medium">Name</th>
+                          <th className="text-left py-2 text-surface-500 font-medium">Type</th>
+                          <th className="text-left py-2 text-surface-500 font-medium">Value</th>
+                          <th className="text-right py-2 text-surface-500 font-medium">TTL</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+                        {dnsRecords.map((r, i) => (
+                          <tr key={i}>
+                            <td className="py-2 text-surface-900 dark:text-white">{r.name}</td>
+                            <td className="py-2"><span className="text-xs px-2 py-0.5 bg-surface-100 dark:bg-surface-700 rounded">{r.type}</span></td>
+                            <td className="py-2 text-surface-500">{r.records.map(rec => rec.content).join(', ')}</td>
+                            <td className="py-2 text-right text-surface-400">{r.ttl}s</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

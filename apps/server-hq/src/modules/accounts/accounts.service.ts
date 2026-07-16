@@ -8,6 +8,7 @@ import {
   NginxService,
   MailService,
   DnsService,
+  DnsRecord,
   DatabaseProvisioningService,
 } from '@serverpilot/infra';
 
@@ -69,6 +70,8 @@ export class AccountsService {
         databases: true,
         subdomains: true,
         ftpAccounts: true,
+        cronJobs: true,
+        backups: true,
       },
     });
 
@@ -77,6 +80,20 @@ export class AccountsService {
     }
 
     return account;
+  }
+
+  async getDns(id: string): Promise<{ zone: string | null; records: DnsRecord[] }> {
+    const account = await this.prisma.account.findUnique({
+      where: { id },
+      select: { domain: true },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Account not found');
+    }
+
+    const records = await this.dns.listRecords(account.domain);
+    return { zone: account.domain, records };
   }
 
   async create(dto: CreateAccountDto) {
