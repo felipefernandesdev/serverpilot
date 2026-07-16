@@ -1,11 +1,11 @@
 # ServerPilot — MEMORY
 
-## Sessão: 2026-07-16
+## Sessão: 2026-07-16 (tarde/noite)
 
 ### Estado Atual
-- **Fase**: 3 (Admin funcional + dark mode) / Infra Docker provisionando
+- **Fase**: 3 (Admin funcional + infra provisionando + detail tabs)
 - **Branch**: `main`
-- **Último commit**: `db06d32` — fix: docker infra configs and PowerDNS DnsService
+- **Último commit**: `c3793ea` — feat: admin account detail with tabs
 
 ### Estrutura de Apps (NÃO CONFUNDIR)
 
@@ -86,3 +86,30 @@ cd docker && podman compose up -d
 | Adminer (DB) | http://localhost:8080 | postgres/postgres | serverpilot |
 | PowerDNS API | http://localhost:8081 | X-API-Key: pdns_api_key_dev | — |
 | Nginx (sites) | http://localhost:8082 | — | — |
+
+## Sessão Extra: Correções e Melhorias
+
+### Bugs Corrigidos
+1. **writeFile** (`docker-exec.service.ts`): heredoc `<< 'EOF'` com `\n` não virava newline dentro de `podman exec sh -c "..."` porque `JSON.stringify` convertia `\n` para literal. **Solução:** pipe via stdin com `execSync({ input })`.
+2. **DnsService URL** (`dns.service.ts`): `new URL('/zones', baseComTrailingSlash)` com path iniciando em `/` substituía o path inteiro da base (ex: `/api/v1/servers/localhost` → `/zones`). **Solução:** remover `/` dos paths → `new URL('zones', base)`.
+3. **Nginx template** (`nginx.service.ts`): `$uri`, `$document_root`, `$fastcgi_script_name` eram interpretados como variáveis JS no template literal. **Solução:** `\${uri}`, `\$document_root`.
+4. **SnappyMail port** (`docker-compose.yml`): mapeado `9001:80` mas nginx interno escuta `8888`. **Solução:** `9001:8888`.
+5. **DTO validation** (`create-account.dto.ts`, `update-account.dto.ts`): `@IsUUID()` e `@IsEmail()` quebravam com CUIDs/domínios. **Solução:** `@IsString()`, `@Matches()`.
+
+### Funcionalidades Implementadas
+1. **Subdomain provisioning** (`domain.service.ts`): ao criar subdomínio via SitePanel, cria automaticamente DNS A record + nginx vhost + diretório. Ao remover, limpa DNS + vhost.
+2. **DNS + nginx retroativos** para seed data: criadas zonas DNS e vhosts nginx para `client01.com` e `client02.com` (incluindo subdomínios `blog`, `api`).
+3. **Email create com domínio preenchido** (`email/page.tsx`): campo dividido `[user] @ [dominio]`, domínio vem do `localStorage('account')` e é read-only.
+4. **Email edit quota/password** (`email/page.tsx`): botão "Edit Settings" no modal de detalhe, altera quota e/ou senha via `PUT /api/email/:id`.
+5. **Admin detail com abas** (`accounts/page.tsx`): modal redesenhado com Overview (métricas + contadores), Email, Databases, Subdomains, DNS (PowerDNS).
+6. **Endpoint `GET /accounts/:id/dns`**: server-hq consulta PowerDNS via `DnsService.listRecords()`.
+7. **Scripts atualizados**: `start.sh` (init PDNS schema, provision seed, healthcheck), `stop.sh` (kills next dev + containers), `reset.sh` (clean all).
+
+### Commits
+| Hash | Mensagem |
+|------|----------|
+| `b22c01f` | fix: infra provisioning and doc clarification |
+| `1e2ba66` | feat: subdomain provisioning with DNS + nginx |
+| `293f1b4` | feat: pre-fill domain in email create form + edit quota/password |
+| `9375e3c` | chore: update start/stop/reset scripts |
+| `c3793ea` | feat: admin account detail with tabs |
