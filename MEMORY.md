@@ -131,6 +131,25 @@ cd docker && podman compose up -d
 | `e9a124d` | feat: add real server status endpoint with container monitoring |
 | `3d4a2cf` | fix: improve start/stop scripts |
 | `f652c97` | feat: add VPS installer, systemd services, and nginx proxy config |
+| `d9e26e8` | docs: add post-installation guide with SnappyMail and email stack setup |
+| `(próximo)` | refactor: install-vps.sh with --analyze/--install modes, system checks |
+
+## Sessão: 2026-07-17 (noite)
+
+### O Que Foi Feito
+
+1. **VPS Installer refatorado** — agora com dois modos:
+   - `--analyze`: verifica requisitos (OS, memória, disco, pacotes, portas, domínios) sem instalar
+   - `--install`: só instala (pula análise)
+   - `./install-vps.sh` (padrão): análise + confirmação + instalação
+2. **Análise completa** — verifica: Node ≥20, PostgreSQL, Redis, Podman rootful, portas livres, resolução DNS, espaço em disco, memória RAM
+3. **Documentação pós-instalação** — `docs/06-pos-instalacao.md` com passo a passo do SnappyMail, stack de email, backup, checklist
+
+### Commits
+| Hash | Mensagem |
+|------|----------|
+| `d9e26e8` | docs: add post-installation guide with SnappyMail and email stack setup |
+| `(próximo)` | refactor: install-vps.sh with --analyze/--install modes, system checks |
 
 ### Gate
 - typecheck: ✅ (sem erros)
