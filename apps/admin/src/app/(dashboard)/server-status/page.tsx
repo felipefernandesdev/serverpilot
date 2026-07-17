@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity, Server, HardDrive, Wifi, Clock,
@@ -12,36 +12,80 @@ interface Service {
   status: 'online' | 'offline' | 'degraded';
   uptime: string;
   version?: string;
+  containerName: string;
 }
 
-const services: Service[] = [
-  { name: 'Web Server (Nginx)', status: 'online', uptime: '15d 7h 23m', version: '1.25.3' },
-  { name: 'Database (MySQL)', status: 'online', uptime: '15d 7h 22m', version: '8.0.35' },
-  { name: 'FTP (Pure-FTPd)', status: 'online', uptime: '15d 7h 20m', version: '1.0.51' },
-  { name: 'Email (Exim)', status: 'online', uptime: '15d 7h 19m', version: '4.97' },
-  { name: 'DNS (Bind9)', status: 'online', uptime: '15d 7h 25m', version: '9.18.20' },
-  { name: 'SSL (Certbot)', status: 'online', uptime: '15d 7h 18m', version: '2.8.0' },
-  { name: 'Redis Cache', status: 'online', uptime: '15d 7h 24m', version: '7.2.4' },
-  { name: 'SSH Server', status: 'online', uptime: '15d 7h 26m', version: 'OpenSSH 9.6' },
-];
+interface ResourceStats {
+  cpu: { percent: number; loadAvg: string };
+  memory: { used: string; total: string; percent: number };
+  disk: { used: string; total: string; percent: number };
+  network: { rx: string; tx: string };
+}
+
+interface ServerStatusData {
+  services: Service[];
+  stats: ResourceStats;
+  lastCheck: string;
+}
 
 export default function ServerStatusPage() {
   const router = useRouter();
+  const [data, setData] = useState<ServerStatusData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastCheck, setLastCheck] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) { router.push('/login'); return; }
+
+    try {
+      const res = await fetch('/api/server-status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch server status');
+      const json = await res.json();
+      setData(json);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, [router]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (!token) router.push('/login');
-  }, [router]);
+    if (!token) { router.push('/login'); return; }
+    fetchStatus();
+  }, [router, fetchStatus]);
 
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setLastCheck(new Date());
-      setRefreshing(false);
-    }, 1000);
+    fetchStatus().finally(() => setRefreshing(false));
   };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+          <p className="text-surface-600 dark:text-surface-400">{error}</p>
+          <button onClick={handleRefresh} className="px-4 py-2 bg-surface-100 dark:bg-surface-800 rounded-xl">
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-8 h-8 animate-spin text-surface-400" />
+      </div>
+    );
+  }
+
+  const onlineCount = data.services.filter(s => s.status === 'online').length;
+  const totalServices = data.services.length;
 
   return (
     <div className="space-y-6">
@@ -49,7 +93,7 @@ export default function ServerStatusPage() {
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-white">Server Status</h1>
           <p className="text-surface-500 dark:text-surface-400 mt-1">
-            Last checked: {lastCheck.toLocaleTimeString()}
+            Last checked: {new Date(data.lastCheck).toLocaleTimeString()}
           </p>
         </div>
         <button
@@ -63,10 +107,34 @@ export default function ServerStatusPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={<Server className="w-6 h-6" />} label="Services" value={`${services.filter(s => s.status === 'online').length}/${services.length}`} subtitle="online" color="green" />
-        <StatCard icon={<Activity className="w-6 h-6" />} label="Load Average" value="0.42" subtitle="1 min average" color="blue" />
-        <StatCard icon={<HardDrive className="w-6 h-6" />} label="Disk Usage" value="45%" subtitle="234 GB / 512 GB" color="purple" />
-        <StatCard icon={<Wifi className="w-6 h-6" />} label="Network" value="1.2 Gbps" subtitle="in / 0.8 Gbps out" color="emerald" />
+        <StatCard
+          icon={<Server className="w-6 h-6" />}
+          label="Services"
+          value={`${onlineCount}/${totalServices}`}
+          subtitle="online"
+          color="green"
+        />
+        <StatCard
+          icon={<Activity className="w-6 h-6" />}
+          label="Load Average"
+          value={data.stats.cpu.loadAvg.split(' / ')[0]}
+          subtitle={data.stats.cpu.loadAvg}
+          color="blue"
+        />
+        <StatCard
+          icon={<HardDrive className="w-6 h-6" />}
+          label="Disk Usage"
+          value={`${data.stats.disk.percent}%`}
+          subtitle={`${data.stats.disk.used} / ${data.stats.disk.total}`}
+          color="purple"
+        />
+        <StatCard
+          icon={<Wifi className="w-6 h-6" />}
+          label="Network"
+          value={`${data.stats.network.rx}`}
+          subtitle={`in / ${data.stats.network.tx} out`}
+          color="emerald"
+        />
       </div>
 
       <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
@@ -83,7 +151,7 @@ export default function ServerStatusPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-200 dark:divide-surface-700">
-            {services.map((svc) => (
+            {data.services.map((svc) => (
               <tr key={svc.name} className="hover:bg-surface-50 dark:hover:bg-surface-700/50 transition">
                 <td className="px-6 py-4">
                   <span className="font-medium text-surface-900 dark:text-white">{svc.name}</span>
@@ -118,10 +186,35 @@ export default function ServerStatusPage() {
       <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-6">
         <h2 className="text-lg font-semibold text-surface-900 dark:text-white mb-4">Resource Usage</h2>
         <div className="space-y-4">
-          <ResourceBar label="CPU Usage" percentage={23} color="blue" detail="0.42 / 0.53 / 0.38" />
-          <ResourceBar label="Memory" percentage={62} color="green" detail="3.8 GB / 6.2 GB" />
-          <ResourceBar label="Disk I/O" percentage={15} color="purple" detail="45 MB/s read / 12 MB/s write" />
-          <ResourceBar label="Network" percentage={38} color="emerald" detail="1.2 Gbps in / 0.8 Gbps out" />
+          <ResourceBar
+            label="CPU Usage"
+            percentage={data.stats.cpu.percent}
+            color="blue"
+            detail={`${data.stats.cpu.percent.toFixed(1)}% (${data.stats.cpu.loadAvg})`}
+          />
+          <ResourceBar
+            label="Memory"
+            percentage={data.stats.memory.percent}
+            color="green"
+            detail={`${data.stats.memory.used} / ${data.stats.memory.total}`}
+          />
+          <ResourceBar
+            label="Disk Usage"
+            percentage={data.stats.disk.percent}
+            color="purple"
+            detail={`${data.stats.disk.used} / ${data.stats.disk.total}`}
+          />
+          <ResourceBar
+            label="Network"
+            percentage={Math.min(
+              Math.round(
+                (parseFloat(data.stats.network.rx) / (parseFloat(data.stats.network.rx) + parseFloat(data.stats.network.tx) || 1)) * 100
+              ),
+              100
+            )}
+            color="emerald"
+            detail={`${data.stats.network.rx} in / ${data.stats.network.tx} out`}
+          />
         </div>
       </div>
     </div>
@@ -160,7 +253,7 @@ function ResourceBar({ label, percentage, color, detail }: { label: string; perc
         <span className="text-sm text-surface-500 dark:text-surface-400">{detail}</span>
       </div>
       <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2.5">
-        <div className={`h-2.5 rounded-full ${barColors[color]} transition-all duration-500`} style={{ width: `${percentage}%` }} />
+        <div className={`h-2.5 rounded-full ${barColors[color]} transition-all duration-500`} style={{ width: `${Math.min(percentage, 100)}%` }} />
       </div>
     </div>
   );
