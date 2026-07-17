@@ -102,8 +102,7 @@ services:
     volumes:
       - postfix_config:/etc/postfix
       - postfix_spool:/var/spool/postfix
-    depends_on:
-      - mailhog
+    # depends_on (removed: podman-compose hangs on dep checks)
 
   dovecot:
     image: docker.io/eilandert/dovecot:latest
