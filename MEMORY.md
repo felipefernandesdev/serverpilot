@@ -55,9 +55,7 @@
 
 ### Problemas Conhecidos
 - SnappyMail: precisa configurar admin (`/admin`) e criar domínio manualmente
-- Server Status page ainda mock
 - Postfix/Dovecot/SnappyMail stack não verificada end-to-end
-- Sem VPS deployment (rootful compose, TLS, systemd)
 - Sem testes (0% cobertura)
 
 ### Como iniciar
@@ -113,3 +111,29 @@ cd docker && podman compose up -d
 | `293f1b4` | feat: pre-fill domain in email create form + edit quota/password |
 | `9375e3c` | chore: update start/stop/reset scripts |
 | `c3793ea` | feat: admin account detail with tabs |
+| `e9a124d` | feat: add real server status endpoint with container monitoring |
+| `3d4a2cf` | fix: improve start/stop scripts |
+| `f652c97` | feat: add VPS installer, systemd services, and nginx proxy config |
+
+## Sessão: 2026-07-17 (tarde)
+
+### O Que Foi Feito
+
+1. **Server Status real** — criado `ServerStatusService` em `packages/infra/` que consulta containers via podman + recursos do host via `/proc`. Endpoint `GET /api/server-status` no server-hq. Frontend atualizado de mock para API real. 8 serviços monitorados com status/versão/uptime.
+2. **Correção start/stop scripts** — `start.sh`: pre-pull de imagens, `set +e`, provisioning com `ts-node`. `stop.sh`: usa `podman stop/rm` direto. `docker-compose.yml`: removido `depends_on` do postfix (causava travamento no podman-compose).
+3. **VPS Installer** — `scripts/install-vps.sh`: instalação automatizada para Ubuntu/Debian com Node.js 20+, Podman, Nginx, PostgreSQL, Redis, systemd services, firewall, Let's Encrypt SSL, containers de infra.
+4. **Deploy files** — `deploy/`: 4 systemd service files + nginx reverse proxy template com SSL.
+5. **Documentação** — `docs/05-deploy-vps.md`: guia de instalação rápida e manual.
+
+### Commits
+| Hash | Mensagem |
+|------|----------|
+| `e9a124d` | feat: add real server status endpoint with container monitoring |
+| `3d4a2cf` | fix: improve start/stop scripts |
+| `f652c97` | feat: add VPS installer, systemd services, and nginx proxy config |
+
+### Gate
+- typecheck: ✅ (sem erros)
+- lint: ⚠️ falha pré-existente (ESLint não configurado em server-hq)
+- test: ⚠️ falha pré-existente (site-panel sem testes implementados)
+- build: ⚠️ falha pré-existente (next build interrompido por dev server rodando)
