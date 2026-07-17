@@ -248,6 +248,11 @@ podman compose up -d 2>&1 || warn "Falha ao subir containers — rode manualment
 cd "$INSTALL_DIR"
 ok "Containers iniciados"
 
+# ── 17b. Inicializar PowerDNS schema ─────────────────────────────────────
+info "Inicializando PowerDNS schema..."
+podman exec -i serverpilot-postgres psql -U serverpilot -d serverpilot < "$INSTALL_DIR/docker/powerdns/schema.pgsql.sql" 2>/dev/null && \
+  ok "PowerDNS schema criado" || warn "PowerDNS schema já existe"
+
 # ── 18. Healthcheck ───────────────────────────────────────────────────────
 info "Verificando serviços..."
 sleep 5
@@ -289,6 +294,19 @@ cat << RESUME
 ║    Atualizar: cd ${INSTALL_DIR} && git pull && npm run build  ║
 ║                                                              ║
 ║  Aviso: A senha admin foi salva em .env. Altere após login.  ║
+║                                                              ║
+║  ⚠ CONFIGURAÇÃO MANUAL NECESSÁRIA:                           ║
+║  SnappyMail (webmail) requer setup via navegador:            ║
+║  1. Acesse https://${DOMAIN_WEBMAIL}                         ║
+║  2. Sera redirecionado para /admin/ — configure IMAP/SMTP    ║
+║  3. IMAP: dovecot :143 | SMTP: postfix :587                  ║
+║                                                              ║
+║  Stack de email (Postfix+Dovecot) tem limitações:            ║
+║  - Em dev: email vai para MailHog (localhost:8025)           ║
+║  - Em producao: precisa configurar virtual mailboxes no      ║
+║    Postfix com PostgreSQL (veja docs/06-pos-instalacao.md)    ║
+║                                                              ║
+║  Guia completo: cat docs/06-pos-instalacao.md                ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 RESUME

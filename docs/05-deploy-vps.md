@@ -181,6 +181,14 @@ cd apps/web && npx next build && cd ../..
 systemctl restart serverpilot-server-hq serverpilot-site-panel serverpilot-admin serverpilot-web
 ```
 
+## Pós-instalação
+
+Após a instalação, alguns serviços exigem configuração manual:
+
+1. **SnappyMail** — acessar `https://webmail.seuservidor.com/` e configurar admin + IMAP/SMTP
+2. **Stack de email** — Postfix atual é um relay simples; para produção com entrega real, ver `docs/06-pos-instalacao.md`
+3. **Testar tudo** — ver checklist em `docs/06-pos-instalacao.md#6-checklist-pós-instalação`
+
 ## Troubleshooting
 
 ### API não sobe
