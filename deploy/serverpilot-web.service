@@ -1,0 +1,20 @@
+[Unit]
+Description=ServerPilot Client Frontend (SitePanel)
+After=network.target
+Wants=serverpilot-site-panel.service
+
+[Service]
+Type=simple
+User=serverpilot
+Group=serverpilot
+WorkingDirectory=/opt/serverpilot
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx next start -p 3003
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=serverpilot-web
+
+[Install]
+WantedBy=multi-user.target

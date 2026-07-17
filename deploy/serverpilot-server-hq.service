@@ -1,0 +1,21 @@
+[Unit]
+Description=ServerPilot ServerHQ API (Admin)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=serverpilot
+Group=serverpilot
+WorkingDirectory=/opt/serverpilot
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/npx ts-node --transpile-only -r tsconfig-paths/register apps/server-hq/src/main.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=serverpilot-server-hq
+
+[Install]
+WantedBy=multi-user.target

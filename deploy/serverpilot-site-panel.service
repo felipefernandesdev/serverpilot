@@ -1,0 +1,21 @@
+[Unit]
+Description=ServerPilot SitePanel API (Client)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=serverpilot
+Group=serverpilot
+WorkingDirectory=/opt/serverpilot
+Environment=NODE_ENV=production
+Environment=PORT=3002
+ExecStart=/usr/bin/npx ts-node --transpile-only -r tsconfig-paths/register apps/site-panel/src/main.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=serverpilot-site-panel
+
+[Install]
+WantedBy=multi-user.target
