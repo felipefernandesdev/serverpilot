@@ -22,11 +22,19 @@ export interface ServerStatus {
   lastCheck: string;
 }
 
-const SERVICES_CONFIG: { name: string; containerName: string; versionCmd: string }[] = [
-  { name: 'Web Server (Nginx)', containerName: 'serverpilot-nginx', versionCmd: 'nginx -v 2>&1' },
-  { name: 'Database (PostgreSQL)', containerName: 'serverpilot-postgres', versionCmd: 'psql --version' },
+interface ServiceConfig {
+  name: string;
+  containerName: string;
+  systemdService?: string;
+  versionCmd: string;
+  systemVersionCmd?: string;
+}
+
+const SERVICES_CONFIG: ServiceConfig[] = [
+  { name: 'Web Server (Nginx)', containerName: 'serverpilot-nginx', systemdService: 'nginx', versionCmd: 'nginx -v 2>&1' },
+  { name: 'Database (PostgreSQL)', containerName: 'serverpilot-postgres', systemdService: 'postgresql', versionCmd: 'psql --version' },
   { name: 'Database (MariaDB)', containerName: 'serverpilot-mariadb', versionCmd: 'mariadb --version' },
-  { name: 'Redis Cache', containerName: 'serverpilot-redis', versionCmd: 'redis-server --version 2>&1 | head -1' },
+  { name: 'Redis Cache', containerName: 'serverpilot-redis', systemdService: 'redis-server', versionCmd: 'redis-server --version 2>&1 | head -1' },
   { name: 'Email (Postfix)', containerName: 'serverpilot-postfix', versionCmd: 'postconf mail_version 2>/dev/null || echo ""' },
   { name: 'Email (Dovecot)', containerName: 'serverpilot-dovecot', versionCmd: 'dovecot --version 2>&1' },
   { name: 'DNS (PowerDNS)', containerName: 'serverpilot-powerdns', versionCmd: 'pdns_server --version 2>&1 | head -1' },
@@ -92,20 +100,33 @@ export class ServerStatusService {
 
   private getServices(): ServiceInfo[] {
     return SERVICES_CONFIG.map((svc) => {
-      const status = this.getContainerStatus(svc.containerName);
-      const uptime = status.running ? this.getContainerUptime(svc.containerName) : '-';
-      const version = status.running && svc.versionCmd
-        ? this.getVersion(svc.containerName, svc.versionCmd)
+      let running = this.getContainerStatus(svc.containerName).running;
+      if (!running && svc.systemdService) {
+        running = this.getSystemdStatus(svc.systemdService);
+      }
+      const uptime = running ? (this.getContainerUptime(svc.containerName) || this.getSystemdUptime(svc.systemdService)) : '-';
+      const version = running
+        ? (svc.versionCmd ? this.getVersion(svc.containerName, svc.versionCmd) : undefined)
         : undefined;
 
       return {
         name: svc.name,
-        status: status.running ? 'online' : 'offline',
+        status: running ? 'online' : 'offline',
         uptime,
         version,
         containerName: svc.containerName,
       };
     });
+  }
+
+  private getSystemdStatus(serviceName: string): boolean {
+    return run(`systemctl is-active ${serviceName} 2>/dev/null`) === 'active';
+  }
+
+  private getSystemdUptime(serviceName?: string): string {
+    if (!serviceName) return '-';
+    const out = run(`systemctl show ${serviceName} --property=ActiveEnterTimestamp 2>/dev/null | sed 's/.*=//'`);
+    return formatUptime(out);
   }
 
   private getContainerStatus(containerName: string): { running: boolean } {
