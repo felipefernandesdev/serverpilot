@@ -143,9 +143,6 @@ apt-get remove --purge -y \
   postgresql-16 \
   postgresql-client \
   postgresql-client-16 \
-  postgresql-server-16 \
-  postgresql-contrib-16 \
-  libpq-dev \
   redis-server \
   nodejs \
   podman \
@@ -153,7 +150,7 @@ apt-get remove --purge -y \
   dnsutils \
   python3-pip \
   2>&1 || true
-rm -rf /var/lib/postgresql /etc/postgresql
+rm -rf /var/lib/postgresql /etc/postgresql /etc/postgresql-common
 apt-get autoremove --purge -y 2>&1 || true
 apt-get clean 2>&1 || true
 

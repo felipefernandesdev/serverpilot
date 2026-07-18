@@ -19,7 +19,7 @@ info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()   { echo -e "${RED}[ERRO]${NC} $1"; }
-fail()  { err "$1"; return 1; }
+fail()  { err "$1"; exit 1; }
 header(){ echo -e "\n${BOLD}${CYAN}── $1 ──${NC}"; }
 bullet(){ echo -e "  ${CYAN}•${NC} $1"; }
 
@@ -334,18 +334,24 @@ run_install() {
     done
   fi
   if ! pg_isready -q; then
-    info "Cluster pode estar ausente — verificando..."
-    if command -v pg_lsclusters &>/dev/null && ! pg_lsclusters 2>/dev/null | grep -q .; then
-      info "Criando cluster PostgreSQL 16 main..."
+    PG_DATA="/var/lib/postgresql/16/main"
+    if [ -d "/etc/postgresql/16/main" ] && [ ! -d "$PG_DATA" ]; then
+      info "Diretório de dados ausente — recriando cluster..."
+      pg_dropcluster 16 main --stop 2>/dev/null || true
       pg_createcluster 16 main --start 2>&1 || true
+    elif ! pg_lsclusters 2>/dev/null | grep -q .; then
+      info "Nenhum cluster encontrado — criando..."
+      pg_createcluster 16 main --start 2>&1 || true
+    else
+      pg_ctlcluster 16 main start 2>&1 || true
+      service postgresql start 2>/dev/null || true
     fi
-    pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
     sleep 2
   fi
   if pg_isready -q; then
     ok "PostgreSQL $(psql --version 2>&1 | head -1)"
   else
-    warn "PostgreSQL não está rodando — checagem retentada no step do banco"
+    warn "PostgreSQL não está rodando — verifique manualmente: pg_lsclusters"
     ok "PostgreSQL $(psql --version 2>&1 | head -1)"
   fi
 
@@ -463,13 +469,18 @@ ENVEOF
   if ! pg_isready -q; then
     info "PostgreSQL não está rodando — tentando iniciar..."
     systemctl start postgresql 2>/dev/null || true
-    if ! pg_isready -q && command -v pg_lsclusters &>/dev/null && ! pg_lsclusters 2>/dev/null | grep -q .; then
-      info "Criando cluster PostgreSQL 16 main..."
+    PG_DATA="/var/lib/postgresql/16/main"
+    if [ -d "/etc/postgresql/16/main" ] && [ ! -d "$PG_DATA" ]; then
+      info "Diretório de dados ausente — recriando cluster..."
+      pg_dropcluster 16 main --stop 2>/dev/null || true
+      pg_createcluster 16 main --start 2>&1 || true
+    elif [ ! -d "/etc/postgresql/16/main" ]; then
+      info "Nenhum cluster encontrado — criando..."
       pg_createcluster 16 main --start 2>&1 || true
     fi
     pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
     sleep 3
-    pg_isready -q || fail "PostgreSQL inacessível — execute: pg_createcluster 16 main --start && systemctl start postgresql"
+    pg_isready -q || fail "PostgreSQL inacessível — execute manualmente: pg_dropcluster 16 main --stop && pg_createcluster 16 main --start"
   fi
   DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='serverpilot'" 2>/dev/null || echo "0")
   if [ "$DB_EXISTS" != "1" ]; then
@@ -534,15 +545,17 @@ ENVEOF
 
   # ── 15. Nginx ────────────────────────────────────────────────────────────
   header "15/20 — Nginx reverse proxy"
-  sed "s/admin\.seuservidor\.com/$DOMAIN_ADMIN/g; s/painel\.seuservidor\.com/$DOMAIN_PAINEL/g; s/webmail\.seuservidor\.com/$DOMAIN_WEBMAIL/g" \
-    "$INSTALL_DIR/deploy/nginx-serverpilot.conf" > "/etc/nginx/sites-available/serverpilot"
-
-  if [ ! -L "/etc/nginx/sites-enabled/serverpilot" ]; then
-    ln -s "/etc/nginx/sites-available/serverpilot" "/etc/nginx/sites-enabled/"
+  if [ -z "$DOMAIN_ADMIN" ] || [ -z "$DOMAIN_PAINEL" ] || [ -z "$DOMAIN_WEBMAIL" ]; then
+    warn "Domínios não definidos — pulando configuração do nginx"
+  else
+    sed "s/admin\.seuservidor\.com/$DOMAIN_ADMIN/g; s/painel\.seuservidor\.com/$DOMAIN_PAINEL/g; s/webmail\.seuservidor\.com/$DOMAIN_WEBMAIL/g" \
+      "$INSTALL_DIR/deploy/nginx-serverpilot.conf" > "/etc/nginx/sites-available/serverpilot"
+    if [ ! -L "/etc/nginx/sites-enabled/serverpilot" ]; then
+      ln -s "/etc/nginx/sites-available/serverpilot" "/etc/nginx/sites-enabled/"
+    fi
+    rm -f /etc/nginx/sites-enabled/default
+    nginx -t && systemctl reload nginx && ok "Nginx OK" || warn "Falha no nginx"
   fi
-  rm -f /etc/nginx/sites-enabled/default
-
-  nginx -t && systemctl reload nginx && ok "Nginx OK" || warn "Falha no nginx"
 
   # ── 16. Firewall ─────────────────────────────────────────────────────────
   header "16/20 — Firewall (UFW)"
@@ -557,7 +570,9 @@ ENVEOF
 
   # ── 17. SSL ──────────────────────────────────────────────────────────────
   header "17/20 — SSL Let's Encrypt"
-  if command -v certbot &>/dev/null; then
+  if [ -z "$DOMAIN_ADMIN" ] || [ -z "$DOMAIN_PAINEL" ] || [ -z "$DOMAIN_WEBMAIL" ]; then
+    warn "Domínios não definidos — pulando SSL"
+  elif command -v certbot &>/dev/null; then
     certbot --nginx -d "$DOMAIN_ADMIN" -d "$DOMAIN_PAINEL" -d "$DOMAIN_WEBMAIL" \
       --non-interactive --agree-tos --email "$SSL_EMAIL" 2>&1 | tail -3 && \
       ok "Certificados gerados" || warn "SSL falhou — rode: certbot --nginx"
