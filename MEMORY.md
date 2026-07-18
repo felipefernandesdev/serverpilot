@@ -278,8 +278,38 @@ cd docker && podman compose up -d
 | `0610980` | fix: clean SERVERPILOT banner with figlet big font |
 | `3aca229` | feat: block-character banner with credits |
 
+**5. Bootstrap Installer (`scripts/get-serverpilot.sh`):**
+- Comando único: `curl -sSL https://raw.githubusercontent.com/.../scripts/get-serverpilot.sh | bash`
+- Auto-detecta: IP do servidor, hostname, gera sugestões de domínio
+- Coleta interativa com defaults inteligentes
+- Chama o `install-vps.sh` com todas as flags preenchidas
+- Experiência similar ao EasyPanel (`curl url | sh`)
+
+**6. Banner final:**
+- Blocos Unicode com fonte customizada
+- Créditos: "Painel de Hospedagem Web — Linux (Criado por Felipe Fernandes)"
+- Versão v0.3.0 no canto inferior direito
+
+### Commits desta sessão
+
+| Hash | Mensagem |
+|------|----------|
+| `cca0425` | feat: zero-touch install, JWT isolation (ADR-012), DNS template copy |
+| `5344f5a` | fix: clone before user creation to avoid non-empty dir conflict |
+| `68b97fc` | fix: remove 2>/dev/null from git clone to expose real error |
+| `0b24d48` | fix: DB_PASS hex (URL-safe), python3-pip, podman-compose, prisma/seed error checks |
+| `03cd677` | fix: ADMIN_PASS hex, DB sync always runs, remove stray fi |
+| `4e96570` | feat: ASCII art banner with block characters |
+| `242d838` | fix: correct ASCII art banner (SERVERPILOT in big font) |
+| `572083a` | fix: block-character banner as requested |
+| `1db2c76` | fix: uniform 2-space indent on all banner lines |
+| `0610980` | fix: clean SERVERPILOT banner with figlet big font |
+| `3aca229` | feat: block-character banner with credits |
+| `9357c63` | docs: update MEMORY.md with session 2026-07-18 |
+| `667d6a7` | feat: bootstrap installer with auto-detection (get-serverpilot.sh) |
+
 ### Próximos Passos
-1. Testar instalação completa do zero no VPS (comando reset + install --seed --yes)
+1. Testar instalação completa do zero no VPS
 2. Configurar SnappyMail admin manualmente
 3. Implementar virtual mailboxes em produção
 4. Corrigir dual PostgreSQL (sistema vs container)
