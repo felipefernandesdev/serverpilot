@@ -543,11 +543,20 @@ ENVEOF
   done
   ok "Services instalados"
 
-  # ── 15. Nginx ────────────────────────────────────────────────────────────
-  header "15/20 — Nginx reverse proxy"
+  # ── 15. Nginx + SSL auto-assinado ──────────────────────────────────────
+  header "15/20 — Nginx reverse proxy + SSL"
   if [ -z "$DOMAIN_ADMIN" ] || [ -z "$DOMAIN_PAINEL" ] || [ -z "$DOMAIN_WEBMAIL" ]; then
     warn "Domínios não definidos — pulando configuração do nginx"
   else
+    # Gera certificado auto-assinado (substituído pelo Let's Encrypt no step 17 se possível)
+    mkdir -p /etc/nginx/ssl
+    if [ ! -f /etc/nginx/ssl/serverpilot.crt ]; then
+      openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/nginx/ssl/serverpilot.key \
+        -out /etc/nginx/ssl/serverpilot.crt \
+        -subj "/CN=${DOMAIN_ADMIN}" 2>/dev/null
+      chmod 600 /etc/nginx/ssl/serverpilot.key
+    fi
     sed "s/admin\.seuservidor\.com/$DOMAIN_ADMIN/g; s/painel\.seuservidor\.com/$DOMAIN_PAINEL/g; s/webmail\.seuservidor\.com/$DOMAIN_WEBMAIL/g" \
       "$INSTALL_DIR/deploy/nginx-serverpilot.conf" > "/etc/nginx/sites-available/serverpilot"
     if [ ! -L "/etc/nginx/sites-enabled/serverpilot" ]; then
@@ -568,14 +577,15 @@ ENVEOF
   ufw --force enable
   ok "UFW configurado"
 
-  # ── 17. SSL ──────────────────────────────────────────────────────────────
+  # ── 17. SSL Let's Encrypt ───────────────────────────────────────────────
   header "17/20 — SSL Let's Encrypt"
   if [ -z "$DOMAIN_ADMIN" ] || [ -z "$DOMAIN_PAINEL" ] || [ -z "$DOMAIN_WEBMAIL" ]; then
-    warn "Domínios não definidos — pulando SSL"
+    warn "Domínios não definidos — SSL auto-assinado mantido"
   elif command -v certbot &>/dev/null; then
     certbot --nginx -d "$DOMAIN_ADMIN" -d "$DOMAIN_PAINEL" -d "$DOMAIN_WEBMAIL" \
       --non-interactive --agree-tos --email "$SSL_EMAIL" 2>&1 | tail -3 && \
-      ok "Certificados gerados" || warn "SSL falhou — rode: certbot --nginx"
+      ok "Certificados Let's Encrypt gerados" || \
+      warn "SSL rate limit ou DNS — usando auto-assinado. Rode depois: certbot --nginx"
   else
     warn "certbot não encontrado. SSL manual: certbot --nginx"
   fi
