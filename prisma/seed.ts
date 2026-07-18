@@ -12,12 +12,14 @@ async function main() {
   // ============================================
   // Admin User (ServerHQ)
   // ============================================
-  const adminPassword = await bcrypt.hash('admin123', 10);
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@serverpilot.local';
+  const adminPassRaw = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminPassword = await bcrypt.hash(adminPassRaw, 10);
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@serverpilot.local' },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: 'admin@serverpilot.local',
+      email: adminEmail,
       password: adminPassword,
       name: 'Admin',
       role: 'admin',
@@ -257,8 +259,8 @@ async function main() {
   console.log('  Seed completed successfully!');
   console.log('');
   console.log('  ServerHQ (Admin):');
-  console.log('    Email:    admin@serverpilot.local');
-  console.log('    Password: admin123');
+  console.log('    Email:    ' + adminEmail);
+  console.log('    Password: ' + adminPassRaw);
   console.log('');
   console.log('  SitePanel (Client 01):');
   console.log('    Username: client01');
