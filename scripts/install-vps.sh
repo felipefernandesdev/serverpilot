@@ -19,6 +19,7 @@ info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()   { echo -e "${RED}[ERRO]${NC} $1"; }
+fail()  { err "$1"; return 1; }
 header(){ echo -e "\n${BOLD}${CYAN}── $1 ──${NC}"; }
 bullet(){ echo -e "  ${CYAN}•${NC} $1"; }
 
@@ -324,19 +325,27 @@ run_install() {
   if ! command -v psql &>/dev/null; then
     apt-get install -y -qq postgresql postgresql-client
   fi
-  systemctl enable --now postgresql 2>&1 || true
-  for _i in 1 2 3 4 5 6 7 8 9 10; do
-    pg_isready -q && break
-    sleep 1
-  done
   if ! pg_isready -q; then
+    info "Iniciando PostgreSQL..."
+    systemctl enable --now postgresql 2>&1 || true
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      pg_isready -q && break
+      sleep 1
+    done
+  fi
+  if ! pg_isready -q; then
+    info "Cluster pode estar ausente — verificando..."
+    if command -v pg_lsclusters &>/dev/null && ! pg_lsclusters 2>/dev/null | grep -q .; then
+      info "Criando cluster PostgreSQL 16 main..."
+      pg_createcluster 16 main --start 2>&1 || true
+    fi
     pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
     sleep 2
   fi
   if pg_isready -q; then
     ok "PostgreSQL $(psql --version 2>&1 | head -1)"
   else
-    warn "PostgreSQL pode não estar rodando — checagem será retentada no step do banco"
+    warn "PostgreSQL não está rodando — checagem retentada no step do banco"
     ok "PostgreSQL $(psql --version 2>&1 | head -1)"
   fi
 
@@ -453,9 +462,14 @@ ENVEOF
   header "9/20 — Banco PostgreSQL"
   if ! pg_isready -q; then
     info "PostgreSQL não está rodando — tentando iniciar..."
-    systemctl start postgresql 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
+    systemctl start postgresql 2>/dev/null || true
+    if ! pg_isready -q && command -v pg_lsclusters &>/dev/null && ! pg_lsclusters 2>/dev/null | grep -q .; then
+      info "Criando cluster PostgreSQL 16 main..."
+      pg_createcluster 16 main --start 2>&1 || true
+    fi
+    pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
     sleep 3
-    pg_isready -q || { fail "PostgreSQL inacessível — execute manualmente: systemctl start postgresql"; return 1; }
+    pg_isready -q || fail "PostgreSQL inacessível — execute: pg_createcluster 16 main --start && systemctl start postgresql"
   fi
   DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='serverpilot'" 2>/dev/null || echo "0")
   if [ "$DB_EXISTS" != "1" ]; then

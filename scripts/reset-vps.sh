@@ -140,16 +140,22 @@ apt-get remove --purge -y \
   certbot \
   python3-certbot-nginx \
   postgresql \
+  postgresql-16 \
   postgresql-client \
+  postgresql-client-16 \
+  postgresql-server-16 \
+  postgresql-contrib-16 \
+  libpq-dev \
   redis-server \
   nodejs \
   podman \
   build-essential \
   dnsutils \
   python3-pip \
-  2>/dev/null || true
-apt-get autoremove --purge -y 2>/dev/null || true
-apt-get clean 2>/dev/null || true
+  2>&1 || true
+rm -rf /var/lib/postgresql /etc/postgresql
+apt-get autoremove --purge -y 2>&1 || true
+apt-get clean 2>&1 || true
 
 # ── 13. Limpeza final ────────────────────────────────────────────────
 echo "  ■ Cache npm + .npm..."
