@@ -350,15 +350,6 @@ run_install() {
     git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR" 2>/dev/null
   fi
   cd "$INSTALL_DIR"
-  # Se o provider no schema for sqlite e a URL for postgres, corrige
-  local db_provider
-  db_provider=$(grep 'provider\s*=\s*"[^"]*"' "$INSTALL_DIR/prisma/schema.prisma" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-  local db_url
-  db_url=$(grep DATABASE_URL "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
-  if [ "$db_provider" = "sqlite" ] && echo "$db_url" | grep -q "^postgresql"; then
-    sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$INSTALL_DIR/prisma/schema.prisma"
-    info "Prisma provider alterado para postgresql"
-  fi
 
   # ── 6b. podman-compose ──────────────────────────────────────────────────
   if ! command -v podman-compose &>/dev/null; then
@@ -418,11 +409,19 @@ ENVEOF
   # ── 9. npm install ──────────────────────────────────────────────────────
   header "9/19 — Dependências npm"
   cd "$INSTALL_DIR"
-  npm install --omit=dev 2>&1 | tail -3
+  npm install 2>&1 | tail -3
   ok "Dependências instaladas"
 
   # ── 10. Prisma ──────────────────────────────────────────────────────────
   header "10/19 — Prisma"
+  local _db_provider
+  _db_provider=$(grep 'provider\s*=\s*"[^"]*"' "$INSTALL_DIR/prisma/schema.prisma" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+  local _db_url
+  _db_url=$(grep DATABASE_URL "$INSTALL_DIR/.env" | cut -d= -f2-)
+  if [ "$_db_provider" = "sqlite" ] && echo "$_db_url" | grep -q "^postgresql"; then
+    sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$INSTALL_DIR/prisma/schema.prisma"
+    info "Prisma provider alterado para postgresql"
+  fi
   npx prisma generate 2>/dev/null
   npx prisma db push 2>/dev/null
   ok "Prisma Client + schema aplicado"
@@ -431,7 +430,7 @@ ENVEOF
   header "11/19 — Seed de dados"
   read -rp "  Executar seed com dados de exemplo? (s/N): " DO_SEED
   if [[ "$DO_SEED" =~ ^[Ss]$ ]]; then
-    npm run db:seed 2>&1 | tail -5
+    npx ts-node --transpile-only prisma/seed.ts 2>&1 | tail -10
     ok "Seed concluído"
   else
     info "Seed pulado"
