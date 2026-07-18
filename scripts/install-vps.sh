@@ -377,7 +377,7 @@ JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}"
 JWT_REFRESH_EXPIRATION="7d"
 PORT=3001
 NODE_ENV=production
-ADMIN_EMAIL="admin@${DOMAIN_ADMIN}"
+ADMIN_EMAIL="${SSL_EMAIL}"
 ADMIN_PASSWORD="${ADMIN_PASS}"
 PDNS_API_KEY="pdns_$(openssl rand -hex 16)"
 LETSENCRYPT_EMAIL="${SSL_EMAIL}"
@@ -513,10 +513,12 @@ ENVEOF
   ADMIN_PASS=${ADMIN_PASS:-$(grep ADMIN_PASSWORD "$INSTALL_DIR/.env" | cut -d= -f2)}
 
   # Testar API
+  local _admin_email
+  _admin_email=$(grep ADMIN_EMAIL "$INSTALL_DIR/.env" | cut -d= -f2)
   local login_res
   login_res=$(curl -sf http://127.0.0.1:3001/api/auth/login -X POST \
     -H 'Content-Type: application/json' \
-    -d '{"email":"admin@'"$DOMAIN_ADMIN"'","password":"'"$ADMIN_PASS"'"}' 2>/dev/null) && \
+    -d '{"email":"'"$_admin_email"'","password":"'"$ADMIN_PASS"'"}' 2>/dev/null) && \
     ok "API respondendo" || warn "API não respondeu — verifique .env e logs"
 }
 
@@ -560,6 +562,7 @@ fi
 run_install
 
 # ── Resumo Final ──────────────────────────────────────────────────────────
+ADMIN_EMAIL_FINAL=$(grep ADMIN_EMAIL "$INSTALL_DIR/.env" | cut -d= -f2)
 ADMIN_PASS=${ADMIN_PASS:-$(grep ADMIN_PASSWORD "$INSTALL_DIR/.env" | cut -d= -f2)}
 echo ""
 cat << RESUME
@@ -574,7 +577,7 @@ cat << RESUME
 ║    Webmail:         https://${DOMAIN_WEBMAIL}                 ║
 ║                                                              ║
 ║  Credenciais Admin:                                           ║
-║    Email: admin@${DOMAIN_ADMIN}                               ║
+║    Email: ${ADMIN_EMAIL_FINAL}                               ║
 ║    Senha: ${ADMIN_PASS}                                       ║
 ║                                                              ║
 ║  ⚠ CONFIGURAÇÃO MANUAL NECESSÁRIA:                           ║
