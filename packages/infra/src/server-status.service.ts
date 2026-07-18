@@ -140,18 +140,33 @@ export class ServerStatusService {
   private getCpuStats(): { percent: number; loadAvg: string } {
     try {
       const loadAvg = readFileSync('/proc/loadavg', 'utf-8').trim().split(/\s+/).slice(0, 3).join(' / ');
+      const stat = readFileSync('/proc/stat', 'utf-8');
+      const cpuLine = stat.split('\n').find(l => l.startsWith('cpu '));
+      if (!cpuLine) return { percent: 0, loadAvg };
 
-      const statsOutput = run(`${this.cmd} stats --no-stream --format '{{.CPUPerc}}' 2>/dev/null`);
-      const percentages = statsOutput.split('\n').map((l) => parseFloat(l)).filter((n) => !isNaN(n));
-      const avgPercent = percentages.length > 0
-        ? Math.round((percentages.reduce((a, b) => a + b, 0) / percentages.length) * 100) / 100
-        : 0;
+      const parts = cpuLine.trim().split(/\s+/).slice(1).map(Number);
+      const total = parts.reduce((a, b) => a + b, 0);
+      const idle = parts[3] || 0;
 
-      return { percent: Math.min(avgPercent, 100), loadAvg };
+      const cached = this._prevCpu;
+      if (cached) {
+        const diffTotal = total - cached.total;
+        const diffIdle = idle - cached.idle;
+        const percent = diffTotal > 0
+          ? Math.round(((1 - diffIdle / diffTotal) * 100) * 100) / 100
+          : 0;
+        this._prevCpu = { total, idle };
+        return { percent: Math.min(Math.max(percent, 0), 100), loadAvg };
+      }
+
+      this._prevCpu = { total, idle };
+      return { percent: 0, loadAvg };
     } catch {
       return { percent: 0, loadAvg: '0.00 / 0.00 / 0.00' };
     }
   }
+
+  private _prevCpu?: { total: number; idle: number };
 
   private getMemoryStats(): { used: string; total: string; percent: number } {
     try {
