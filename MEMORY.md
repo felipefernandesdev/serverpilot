@@ -151,8 +151,63 @@ cd docker && podman compose up -d
 | `d9e26e8` | docs: add post-installation guide with SnappyMail and email stack setup |
 | `(próximo)` | refactor: install-vps.sh with --analyze/--install modes, system checks |
 
+## Sessão: 2026-07-17 (noite) — Deploy VPS + Correções
+
+### Estado Atual
+- **Fase**: 4 (Deploy VPS funcional + instalador corrigido)
+- **Branch**: `main`
+- **Último commit**: `7b4cb6a`
+- **VPS**: `51.161.73.164` (agiliza.host, Ubuntu 24.04, 4GB RAM)
+
+### O Que Foi Feito
+
+**Deploy VPS (agiliza.host):**
+1. Instalação completa via `install-vps.sh` — clone, npm, prisma, seed, build, systemd, nginx, SSL, containers
+2. DNS propagado (`admin.agiliza.host`, `painel.agiliza.host`, `webmail.agiliza.host` → 51.161.73.164)
+3. SSL Let's Encrypt emitido com sucesso
+4. 10 containers Podman rodando (nginx, mariadb, postfix, dovecot, snappymail, powerdns, adminer, mailhog, postgres, redis)
+5. 4 systemd services ativos (server-hq, admin, site-panel, web)
+6. Nginx configurado com reverse proxy + default server block (IP → redirect admin.agiliza.host)
+
+**Correções no instalador (8 commits):**
+1. **Git clone**: HTTPS com `GIT_TERMINAL_PROMPT=0` (repo público). Para repo privado, precisa de token.
+2. **npm install**: Removeu `--omit=dev` — tailwindcss e outras devDeps são necessárias pro build.
+3. **Prisma schema**: Provider fixado como `postgresql` (era `sqlite` com auto-detect frágil).
+4. **Seed**: Agora lê `ADMIN_EMAIL`/`ADMIN_PASSWORD` do `.env` em vez de valores hardcoded.
+5. **Systemd**: WorkingDirectory corrigido para cada app (`/opt/serverpilot/apps/admin`, etc.).
+6. **Healthcheck**: Usa `ADMIN_EMAIL` do `.env` em vez de concatenar `admin@${DOMAIN_ADMIN}`.
+7. **podman-compose**: Instalação automática via apt (quando disponível).
+8. **Nginx template**: Adicionado `default_server` block para IP direto.
+
+**Server Status — correções:**
+1. `sudo podman` em vez de `podman` — o serviço roda como `serverpilot`, containers são root.
+2. CPU lida de `/proc/stat` em vez de `podman stats` — stats matava containers!
+3. Fallback para `systemctl is-active` quando container não encontrado (PostgreSQL e Redis rodam como serviço do sistema, não container).
+
+### Problemas Conhecidos (pós-deploy)
+1. **Repo privado**: Instalador precisa de `GITHUB_TOKEN` env var para clonar.
+2. **Seed requer stdin**: Sem flag `--seed` o seed é pulado → sem admin → healthcheck falha.
+3. **Domínios perguntados sempre**: Sem flag `--domains` o script não roda headless.
+4. **Sudoers serverpilot**: Não configurado automaticamente pelo instalador (server-status precisa).
+5. **Dual PostgreSQL**: Sistema e container competem pela porta 5432 — PowerDNS schema falha.
+6. **JWT_SECRET compartilhado**: Admin e cliente usam mesma chave JWT — separação necessária.
+7. **Server-status mostra uptime incorreto** para serviços systemd (formato de data não parseado).
+
+### Commits desta sessão
+
+| Hash | Mensagem |
+|------|----------|
+| `2e6b844` | fix: VPS installer fixes - git clone without prompts, prisma postgresql provider auto-detection, podman-compose auto-install, systemd WorkingDirectory per-app |
+| `3cc4397` | fix: install-vps - remove --omit=dev (blocks tailwindcss build), move prisma provider fix after .env, use npx ts-node for seed |
+| `8c8add8` | fix: schema.prisma provider default postgresql (remove fragile auto-detect) |
+| `8581bf6` | feat: seed reads ADMIN_EMAIL/ADMIN_PASSWORD from env |
+| `1b09810` | fix: installer healthcheck and summary use ADMIN_EMAIL from .env |
+| `d18cd71` | fix: use sudo podman in ServerStatusService (serverpilot user lacks root container access) |
+| `9b1ccb5` | fix: replace podman stats with /proc/stat CPU reading (podman stats was killing containers) |
+| `7b4cb6a` | fix: server-status fallback to systemctl when container not found (postgresql, redis host services) |
+
 ### Gate
 - typecheck: ✅ (sem erros)
 - lint: ⚠️ falha pré-existente (ESLint não configurado em server-hq)
 - test: ⚠️ falha pré-existente (site-panel sem testes implementados)
-- build: ⚠️ falha pré-existente (next build interrompido por dev server rodando)
+- build: ✅ (turbo build passa)
