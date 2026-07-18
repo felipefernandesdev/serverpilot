@@ -211,3 +211,76 @@ cd docker && podman compose up -d
 - lint: ⚠️ falha pré-existente (ESLint não configurado em server-hq)
 - test: ⚠️ falha pré-existente (site-panel sem testes implementados)
 - build: ✅ (turbo build passa)
+
+## Sessão: 2026-07-18 — Melhorias no Instalador + JWT Isolation + DNS Template Copy
+
+### Estado Atual
+- **Fase**: 5 (Instalador zero-touch + ADR-012 + deploy testado)
+- **Branch**: `main`
+- **Último commit**: `3aca229`
+- **VPS**: `51.161.73.164` (agiliza.host, Ubuntu 24.04, 4GB RAM)
+
+### O Que Foi Feito
+
+**1. Instalador zero-touch (`scripts/install-vps.sh`):**
+- Flags CLI: `--domain-admin`, `--domain-painel`, `--domain-webmail`, `--email`, `--seed`, `--yes`, `--token`
+- `--seed`: seed não-interativo (sem stdin)
+- `--yes`/`-y`: auto-confirma instalação
+- `--token`: suporte a GITHUB_TOKEN para repo privado
+- Sudoers NOPASSWD para `podman`, `systemctl`, `journalctl`
+- `chown -R serverpilot:` após clone
+- Ordem corrigida: clone (step 5) → useradd sem `-m` (step 6)
+- DB sync: senha PostgreSQL sempre atualizada após geração do .env
+- DB_PASS e ADMIN_PASS: `openssl rand -hex 16` (URL-safe, sem chars especiais)
+- `python3-pip` adicionado aos pacotes do sistema
+- `pip3 install podman-compose --break-system-packages` (Ubuntu 24.04 PEP 668)
+- Prisma e seed com exit code checks (sem `2>/dev/null` silencioso)
+- Healthcheck: 4 serviços + API admin + API painel
+- UFW sem expor porta 5432 pública
+- Banner ASCII art com blocos Unicode + créditos
+
+**2. JWT Isolation (ADR-012):**
+- `HQ_JWT_SECRET` → usado pelo admin API (ServerHQ)
+- `PANEL_JWT_SECRET` → usado pelo client API (SitePanel)
+- `audience: 'hq'` / `audience: 'panel'` nas claims JWT
+- Fallback para `JWT_SECRET` antigo (compatibilidade dev)
+- `.env.example` atualizado com ambas as variáveis
+
+**3. DNS Template Copy:**
+- `DnsService.copyZoneFromDomain(source, target)`: copia registros não-padrão de uma zona para outra
+- `POST /dns/copy` no SitePanel (body: `{ sourceDomain, targetDomain }`)
+- `templateDomain` opcional no `CreateAccountDto` do ServerHQ
+- `provisionInfrastructure` usa `copyZoneFromDomain` quando template informado
+- `DnsService` lê `PDNS_API_KEY` e `PDNS_API_URL` de env vars
+
+**4. Problemas encontrados no deploy:**
+| Problema | Causa | Fix |
+|----------|-------|-----|
+| Clone falha | `useradd -m` cria `/opt/serverpilot` com skel antes do clone | Clone antes do user, sem `-m` |
+| Seed/Prisma fail | `openssl rand -base64` gera `/` e `+` na URL do PostgreSQL | `openssl rand -hex 16` |
+| podman-compose ausente | pip bloqueado no Ubuntu 24.04 (PEP 668) | `--break-system-packages` + `python3-pip` |
+| Erro silenciado | `2>/dev/null` no prisma escondia falhas | Removido |
+| DB sync falho | Comparava hash `rolpassword` com senha texto | Agora sempre roda ALTER USER |
+
+### Commits desta sessão
+
+| Hash | Mensagem |
+|------|----------|
+| `cca0425` | feat: zero-touch install, JWT isolation (ADR-012), DNS template copy |
+| `5344f5a` | fix: clone before user creation to avoid non-empty dir conflict |
+| `68b97fc` | fix: remove 2>/dev/null from git clone to expose real error |
+| `0b24d48` | fix: DB_PASS hex (URL-safe), python3-pip, podman-compose, prisma/seed error checks |
+| `03cd677` | fix: ADMIN_PASS hex, DB sync always runs, remove stray fi |
+| `4e96570` | feat: ASCII art banner with block characters |
+| `242d838` | fix: correct ASCII art banner (SERVERPILOT in big font) |
+| `572083a` | fix: block-character banner as requested |
+| `1db2c76` | fix: uniform 2-space indent on all banner lines |
+| `0610980` | fix: clean SERVERPILOT banner with figlet big font |
+| `3aca229` | feat: block-character banner with credits |
+
+### Próximos Passos
+1. Testar instalação completa do zero no VPS (comando reset + install --seed --yes)
+2. Configurar SnappyMail admin manualmente
+3. Implementar virtual mailboxes em produção
+4. Corrigir dual PostgreSQL (sistema vs container)
+5. Adicionar testes
