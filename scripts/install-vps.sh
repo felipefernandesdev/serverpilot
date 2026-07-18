@@ -320,20 +320,42 @@ run_install() {
   ok "Node.js $(node -v)"
 
   # ── 3. PostgreSQL ─────────────────────────────────────────────────────────
-  header "3/19 — PostgreSQL"
+  header "3/20 — PostgreSQL"
   if ! command -v psql &>/dev/null; then
     apt-get install -y -qq postgresql postgresql-client
   fi
-  systemctl enable --now postgresql 2>/dev/null || true
-  ok "PostgreSQL $(psql --version 2>&1 | head -1)"
+  systemctl enable --now postgresql 2>&1 || true
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    pg_isready -q && break
+    sleep 1
+  done
+  if ! pg_isready -q; then
+    pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
+    sleep 2
+  fi
+  if pg_isready -q; then
+    ok "PostgreSQL $(psql --version 2>&1 | head -1)"
+  else
+    warn "PostgreSQL pode não estar rodando — checagem será retentada no step do banco"
+    ok "PostgreSQL $(psql --version 2>&1 | head -1)"
+  fi
 
   # ── 4. Redis ──────────────────────────────────────────────────────────────
-  header "4/19 — Redis"
+  header "4/20 — Redis"
   if ! command -v redis-server &>/dev/null; then
     apt-get install -y -qq redis-server
   fi
-  systemctl enable --now redis-server 2>/dev/null || true
-  ok "Redis $(redis-server --version 2>&1 | sed 's/.*v=//' | cut -d' ' -f1)"
+  systemctl enable --now redis-server 2>&1 || true
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    redis-cli ping &>/dev/null && break
+    sleep 1
+  done
+  if redis-cli ping &>/dev/null; then
+    ok "Redis $(redis-server --version 2>&1 | sed 's/.*v=//' | cut -d' ' -f1)"
+  else
+    warn "Redis pode não estar rodando"
+    ok "Redis instalado"
+  fi
 
   # ── 5. Clonar projeto ────────────────────────────────────────────────────
   header "5/19 — Clonar projeto"
@@ -429,6 +451,12 @@ ENVEOF
 
   # ── 9. Banco de dados ────────────────────────────────────────────────────
   header "9/20 — Banco PostgreSQL"
+  if ! pg_isready -q; then
+    info "PostgreSQL não está rodando — tentando iniciar..."
+    systemctl start postgresql 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || service postgresql start 2>/dev/null || true
+    sleep 3
+    pg_isready -q || { fail "PostgreSQL inacessível — execute manualmente: systemctl start postgresql"; return 1; }
+  fi
   DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='serverpilot'" 2>/dev/null || echo "0")
   if [ "$DB_EXISTS" != "1" ]; then
     local db_pass
