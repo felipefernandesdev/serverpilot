@@ -6,7 +6,12 @@
 # NÃO são afetados.
 #
 # Uso: curl -fsSL https://raw.githubusercontent.com/felipefernandesdev/serverpilot/main/scripts/reset-vps.sh | bash
-#   ou: bash scripts/reset-vps.sh
+#   ou: bash scripts/reset-vps.sh [--force]
+
+FORCE=false
+for arg in "$@"; do
+  [ "$arg" = "--force" ] || [ "$arg" = "-f" ] || [ "$arg" = "--yes" ] || [ "$arg" = "-y" ] && FORCE=true
+done
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "ERRO: Execute como root (sudo ou su -)"
@@ -32,10 +37,21 @@ echo "║  podman, nodejs, redis, certbot, ufw, etc).               ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-read -p "Digite 'RESET' para confirmar: " CONFIRM
-if [ "$CONFIRM" != "RESET" ]; then
-  echo "Cancelado."
-  exit 1
+if [ "$FORCE" = true ]; then
+  echo "  ▶ Modo forçado — pulando confirmação"
+else
+  CONFIRM=""
+  if [ -t 0 ]; then
+    read -p "Digite 'RESET' para confirmar: " CONFIRM
+  elif [ -c /dev/tty ]; then
+    read -p "Digite 'RESET' para confirmar: " CONFIRM </dev/tty
+  fi
+  if [ "$CONFIRM" != "RESET" ]; then
+    echo "Cancelado."
+    echo ""
+    echo "Para executar sem confirmação: curl ... | bash -s -- --force"
+    exit 1
+  fi
 fi
 
 echo ""
