@@ -15,3 +15,4 @@ O `2>/dev/null || true` escondia falha do `systemctl enable --now postgresql`. A
 - Dual PostgreSQL (container PowerDNS vs sistema) — precisa de ADR
 - `server-status` uptime (Date() com timestamp systemd)
 - `podman-compose up -d` exit 125
+- DNS: admin.agiliza.host, painel.agiliza.host, webmail.agiliza.host precisam de registro A → 51.161.73.164 antes do install
