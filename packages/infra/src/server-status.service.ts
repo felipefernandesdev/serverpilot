@@ -35,8 +35,8 @@ const SERVICES_CONFIG: { name: string; containerName: string; versionCmd: string
 
 const DOCKER_CMD = (): string => {
   try {
-    execSync('podman --version', { stdio: 'ignore' });
-    return 'podman';
+    execSync('sudo podman --version', { stdio: 'ignore' });
+    return 'sudo podman';
   } catch {
     return 'docker';
   }
