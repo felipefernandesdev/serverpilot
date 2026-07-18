@@ -330,24 +330,8 @@ run_install() {
   systemctl enable --now redis-server 2>/dev/null || true
   ok "Redis $(redis-server --version 2>&1 | sed 's/.*v=//' | cut -d' ' -f1)"
 
-  # ── 5. Usuário + sudoers ─────────────────────────────────────────────────
-  header "5/19 — Usuário system + sudoers"
-  if ! id -u "$SERVERPILOT_USER" &>/dev/null; then
-    useradd -m -s /bin/bash -d "$INSTALL_DIR" "$SERVERPILOT_USER"
-    usermod -aG "$SERVERPILOT_USER" "$SERVERPILOT_USER"
-  fi
-
-  # Sudoers NOPASSWD para podman (necessário para server-status e containers)
-  local sudoers_file="/etc/sudoers.d/${SERVERPILOT_USER}"
-  if [ ! -f "$sudoers_file" ]; then
-    echo "${SERVERPILOT_USER} ALL=(ALL) NOPASSWD: /usr/bin/podman, /usr/bin/systemctl, /bin/journalctl" > "$sudoers_file"
-    chmod 440 "$sudoers_file"
-    ok "Sudoers configurado (podman + systemctl NOPASSWD)"
-  fi
-  ok "Usuário $SERVERPILOT_USER"
-
-  # ── 6. Clonar projeto ────────────────────────────────────────────────────
-  header "6/19 — Clonar projeto"
+  # ── 5. Clonar projeto ────────────────────────────────────────────────────
+  header "5/19 — Clonar projeto"
   if [ -d "$INSTALL_DIR/.git" ]; then
     cd "$INSTALL_DIR"
     git fetch origin
@@ -366,21 +350,36 @@ run_install() {
     err "Falha ao clonar repositório"
     exit 1
   fi
+  ok "Projeto em $INSTALL_DIR"
+
+  # ── 6. Usuário + sudoers ─────────────────────────────────────────────────
+  header "6/19 — Usuário system + sudoers"
+  if ! id -u "$SERVERPILOT_USER" &>/dev/null; then
+    useradd -s /bin/bash -d "$INSTALL_DIR" "$SERVERPILOT_USER"
+    usermod -aG "$SERVERPILOT_USER" "$SERVERPILOT_USER"
+  fi
+
+  # Sudoers NOPASSWD para podman (necessário para server-status e containers)
+  local sudoers_file="/etc/sudoers.d/${SERVERPILOT_USER}"
+  if [ ! -f "$sudoers_file" ]; then
+    echo "${SERVERPILOT_USER} ALL=(ALL) NOPASSWD: /usr/bin/podman, /usr/bin/systemctl, /bin/journalctl" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    ok "Sudoers configurado (podman + systemctl NOPASSWD)"
+  fi
 
   chown -R "$SERVERPILOT_USER:" "$INSTALL_DIR"
   cd "$INSTALL_DIR"
+  ok "Usuário $SERVERPILOT_USER"
 
-  # ── 6b. podman-compose ──────────────────────────────────────────────────
+  # ── 7. podman-compose ───────────────────────────────────────────────────
+  header "7/19 — podman-compose"
   if ! command -v podman-compose &>/dev/null; then
-    info "Instalando podman-compose..."
     pip3 install podman-compose 2>/dev/null || pip install podman-compose 2>/dev/null || \
       warn "podman-compose não instalado — containers Docker não serão iniciados"
   fi
 
-  ok "Projeto em $INSTALL_DIR"
-
-  # ── 7. .env ──────────────────────────────────────────────────────────────
-  header "7/19 — .env"
+  # ── 8. .env ──────────────────────────────────────────────────────────────
+  header "8/19 — .env"
   ADMIN_PASS=""
   if [ ! -f "$INSTALL_DIR/.env" ]; then
     HQ_JWT_SECRET=$(openssl rand -base64 48)
@@ -423,8 +422,8 @@ ENVEOF
     fi
   fi
 
-  # ── 8. Banco de dados ────────────────────────────────────────────────────
-  header "8/19 — Banco PostgreSQL"
+  # ── 9. Banco de dados ────────────────────────────────────────────────────
+  header "9/20 — Banco PostgreSQL"
   DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='serverpilot'" 2>/dev/null || echo "0")
   if [ "$DB_EXISTS" != "1" ]; then
     local db_pass
@@ -437,20 +436,20 @@ ENVEOF
     ok "Banco já existe"
   fi
 
-  # ── 9. npm install ──────────────────────────────────────────────────────
-  header "9/19 — Dependências npm"
+  # ── 10. npm install ─────────────────────────────────────────────────────
+  header "10/20 — Dependências npm"
   cd "$INSTALL_DIR"
   npm install 2>&1 | tail -3
   ok "Dependências instaladas"
 
-  # ── 10. Prisma ──────────────────────────────────────────────────────────
-  header "10/19 — Prisma"
+  # ── 11. Prisma ──────────────────────────────────────────────────────────
+  header "11/20 — Prisma"
   npx prisma generate 2>/dev/null
   npx prisma db push 2>/dev/null
   ok "Prisma Client + schema aplicado"
 
-  # ── 11. Seed ────────────────────────────────────────────────────────────
-  header "11/19 — Seed de dados"
+  # ── 12. Seed ────────────────────────────────────────────────────────────
+  header "12/20 — Seed de dados"
   if [ "$DO_SEED" = false ]; then
     read -rp "  Executar seed com dados de exemplo? (s/N): " DO_SEED_INPUT
     [[ "$DO_SEED_INPUT" =~ ^[Ss]$ ]] && DO_SEED=true
@@ -463,8 +462,8 @@ ENVEOF
     info "Seed pulado"
   fi
 
-  # ── 12. Build frontends ─────────────────────────────────────────────────
-  header "12/19 — Build frontends"
+  # ── 13. Build frontends ─────────────────────────────────────────────────
+  header "13/20 — Build frontends"
   cd "$INSTALL_DIR/apps/admin"
   npx next build 2>&1 | tail -3
   cd "$INSTALL_DIR/apps/web"
@@ -472,8 +471,8 @@ ENVEOF
   cd "$INSTALL_DIR"
   ok "Frontends compilados"
 
-  # ── 13. Systemd ─────────────────────────────────────────────────────────
-  header "13/19 — Systemd services"
+  # ── 14. Systemd ─────────────────────────────────────────────────────────
+  header "14/20 — Systemd services"
   for svc in serverpilot-server-hq serverpilot-site-panel serverpilot-admin serverpilot-web; do
     cp "$INSTALL_DIR/deploy/${svc}.service" "/etc/systemd/system/${svc}.service"
     chmod 644 "/etc/systemd/system/${svc}.service"
@@ -486,8 +485,8 @@ ENVEOF
   done
   ok "Services instalados"
 
-  # ── 14. Nginx ────────────────────────────────────────────────────────────
-  header "14/19 — Nginx reverse proxy"
+  # ── 15. Nginx ────────────────────────────────────────────────────────────
+  header "15/20 — Nginx reverse proxy"
   sed "s/admin\.seuservidor\.com/$DOMAIN_ADMIN/g; s/painel\.seuservidor\.com/$DOMAIN_PAINEL/g; s/webmail\.seuservidor\.com/$DOMAIN_WEBMAIL/g" \
     "$INSTALL_DIR/deploy/nginx-serverpilot.conf" > "/etc/nginx/sites-available/serverpilot"
 
@@ -498,8 +497,8 @@ ENVEOF
 
   nginx -t && systemctl reload nginx && ok "Nginx OK" || warn "Falha no nginx"
 
-  # ── 15. Firewall ─────────────────────────────────────────────────────────
-  header "15/19 — Firewall (UFW)"
+  # ── 16. Firewall ─────────────────────────────────────────────────────────
+  header "16/20 — Firewall (UFW)"
   ufw --force reset 2>/dev/null
   ufw default deny incoming
   ufw default allow outgoing
@@ -509,8 +508,8 @@ ENVEOF
   ufw --force enable
   ok "UFW configurado"
 
-  # ── 16. SSL ──────────────────────────────────────────────────────────────
-  header "16/19 — SSL Let's Encrypt"
+  # ── 17. SSL ──────────────────────────────────────────────────────────────
+  header "17/20 — SSL Let's Encrypt"
   if command -v certbot &>/dev/null; then
     certbot --nginx -d "$DOMAIN_ADMIN" -d "$DOMAIN_PAINEL" -d "$DOMAIN_WEBMAIL" \
       --non-interactive --agree-tos --email "$SSL_EMAIL" 2>&1 | tail -3 && \
@@ -519,21 +518,21 @@ ENVEOF
     warn "certbot não encontrado. SSL manual: certbot --nginx"
   fi
 
-  # ── 17. Containers ───────────────────────────────────────────────────────
-  header "17/19 — Containers de infraestrutura"
+  # ── 18. Containers ───────────────────────────────────────────────────────
+  header "18/20 — Containers de infraestrutura"
   cd "$INSTALL_DIR/docker"
   podman compose up -d 2>&1 | tail -3 || warn "Falha ao subir containers"
   cd "$INSTALL_DIR"
 
-  # ── 17b. PowerDNS schema ────────────────────────────────────────────────
-  header "18/19 — PowerDNS schema"
+  # ── 19. PowerDNS schema ────────────────────────────────────────────────
+  header "19/20 — PowerDNS schema"
   sleep 3
   podman exec -i serverpilot-postgres psql -U serverpilot -d serverpilot \
     < "$INSTALL_DIR/docker/powerdns/schema.pgsql.sql" 2>/dev/null && \
     ok "Schema criado" || warn "Schema já existe"
 
-  # ── 18. Healthcheck ──────────────────────────────────────────────────────
-  header "19/19 — Verificação"
+  # ── 20. Healthcheck ──────────────────────────────────────────────────────
+  header "20/20 — Verificação"
   sleep 8
 
   ALL_ACTIVE=true
