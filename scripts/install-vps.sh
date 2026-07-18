@@ -300,10 +300,10 @@ run_install() {
   # ── 1. Pacotes do sistema ────────────────────────────────────────────────
   header "1/19 — Pacotes do sistema"
   apt-get update -qq
-  apt-get install -y -qq \
-    curl wget gnupg ca-certificates \
-    nginx ufw certbot python3-certbot-nginx \
-    podman build-essential git dnsutils
+    apt-get install -y -qq \
+      curl wget gnupg ca-certificates \
+      nginx ufw certbot python3-certbot-nginx \
+      podman build-essential git dnsutils python3-pip
   ok "Pacotes instalados"
 
   # ── 2. Node.js 20.x ──────────────────────────────────────────────────────
@@ -374,8 +374,8 @@ run_install() {
   # ── 7. podman-compose ───────────────────────────────────────────────────
   header "7/19 — podman-compose"
   if ! command -v podman-compose &>/dev/null; then
-    pip3 install podman-compose 2>/dev/null || pip install podman-compose 2>/dev/null || \
-      warn "podman-compose não instalado — containers Docker não serão iniciados"
+    pip3 install podman-compose --break-system-packages 2>/dev/null || \
+      warn "podman-compose não instalado — containers não foram iniciados"
   fi
 
   # ── 8. .env ──────────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ run_install() {
     PANEL_JWT_SECRET=$(openssl rand -base64 48)
     JWT_REFRESH_SECRET=$(openssl rand -base64 48)
     ADMIN_PASS=$(openssl rand -base64 16)
-    DB_PASS=$(openssl rand -base64 16)
+    DB_PASS=$(openssl rand -hex 16)
 
     cat > "$INSTALL_DIR/.env" << ENVEOF
 DATABASE_URL="postgresql://serverpilot:${DB_PASS}@localhost:5432/serverpilot?schema=public"
@@ -444,8 +444,8 @@ ENVEOF
 
   # ── 11. Prisma ──────────────────────────────────────────────────────────
   header "11/20 — Prisma"
-  npx prisma generate 2>/dev/null
-  npx prisma db push 2>/dev/null
+  npx prisma generate || warn "Prisma generate falhou"
+  npx prisma db push || warn "Prisma db push falhou"
   ok "Prisma Client + schema aplicado"
 
   # ── 12. Seed ────────────────────────────────────────────────────────────
@@ -456,8 +456,8 @@ ENVEOF
   fi
   if [ "$DO_SEED" = true ]; then
     cd "$INSTALL_DIR"
-    npx ts-node --transpile-only prisma/seed.ts 2>&1 | tail -10
-    ok "Seed concluído"
+    npx ts-node --transpile-only prisma/seed.ts 2>&1 && \
+      ok "Seed concluído" || warn "Seed falhou (DB pode estar inacessível)"
   else
     info "Seed pulado"
   fi
