@@ -7,7 +7,10 @@
 #     ./install-vps.sh --analyze  → só análise, não instala
 #     ./install-vps.sh --install  → pula análise, só instala
 #==============================================================================
-set -euo pipefail
+set +e
+# NOTA: set -e foi removido porque check_cmd/check_pkg retornam 1 para
+#       pacotes ausentes, o que abortaria o script prematuramente.
+#       Usamos ALL_OK para rastrear falhas manualmente.
 
 # ── Cores ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -20,8 +23,8 @@ header(){ echo -e "\n${BOLD}${CYAN}── $1 ──${NC}"; }
 bullet(){ echo -e "  ${CYAN}•${NC} $1"; }
 
 # ── Configurações ──────────────────────────────────────────────────────────
-REPO_URL="git@github.com:felipefernandesdev/serverpilot.git"
 REPO_HTTPS="https://github.com/felipefernandesdev/serverpilot.git"
+REPO_URL="$REPO_HTTPS"
 REPO_BRANCH="main"
 INSTALL_DIR="/opt/serverpilot"
 SERVERPILOT_USER="serverpilot"
@@ -343,11 +346,27 @@ run_install() {
     git checkout "$REPO_BRANCH"
     git pull origin "$REPO_BRANCH"
   else
-    # Tenta SSH, fallback HTTPS
-    git clone --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null || \
-    git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR"
+    export GIT_TERMINAL_PROMPT=0
+    git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR" 2>/dev/null
   fi
   cd "$INSTALL_DIR"
+  # Se o provider no schema for sqlite e a URL for postgres, corrige
+  local db_provider
+  db_provider=$(grep 'provider\s*=\s*"[^"]*"' "$INSTALL_DIR/prisma/schema.prisma" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+  local db_url
+  db_url=$(grep DATABASE_URL "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-)
+  if [ "$db_provider" = "sqlite" ] && echo "$db_url" | grep -q "^postgresql"; then
+    sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$INSTALL_DIR/prisma/schema.prisma"
+    info "Prisma provider alterado para postgresql"
+  fi
+
+  # ── 6b. podman-compose ──────────────────────────────────────────────────
+  if ! command -v podman-compose &>/dev/null; then
+    info "Instalando podman-compose..."
+    pip3 install podman-compose 2>/dev/null || pip install podman-compose 2>/dev/null || \
+      warn "podman-compose não instalado — containers Docker não serão iniciados"
+  fi
+
   ok "Projeto em $INSTALL_DIR"
 
   # ── 7. .env ──────────────────────────────────────────────────────────────

@@ -7,10 +7,10 @@ Wants=postgresql.service
 Type=simple
 User=serverpilot
 Group=serverpilot
-WorkingDirectory=/opt/serverpilot
+WorkingDirectory=/opt/serverpilot/apps/site-panel
 Environment=NODE_ENV=production
 Environment=PORT=3002
-ExecStart=/usr/bin/npx ts-node --transpile-only -r tsconfig-paths/register apps/site-panel/src/main.ts
+ExecStart=/usr/bin/npx ts-node --transpile-only -r tsconfig-paths/register src/main.ts
 Restart=always
 RestartSec=5
 StandardOutput=journal

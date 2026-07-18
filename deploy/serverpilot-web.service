@@ -7,7 +7,7 @@ Wants=serverpilot-site-panel.service
 Type=simple
 User=serverpilot
 Group=serverpilot
-WorkingDirectory=/opt/serverpilot
+WorkingDirectory=/opt/serverpilot/apps/web
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/npx next start -p 3003
 Restart=always
