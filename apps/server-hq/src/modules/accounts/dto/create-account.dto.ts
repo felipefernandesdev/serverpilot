@@ -22,4 +22,8 @@ export class CreateAccountDto {
   @IsString()
   @IsOptional()
   userId?: string;
+
+  @IsString()
+  @IsOptional()
+  templateDomain?: string;
 }

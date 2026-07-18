@@ -330,11 +330,19 @@ run_install() {
   systemctl enable --now redis-server 2>/dev/null || true
   ok "Redis $(redis-server --version 2>&1 | sed 's/.*v=//' | cut -d' ' -f1)"
 
-  # ── 5. Usuário ───────────────────────────────────────────────────────────
-  header "5/19 — Usuário system"
+  # ── 5. Usuário + sudoers ─────────────────────────────────────────────────
+  header "5/19 — Usuário system + sudoers"
   if ! id -u "$SERVERPILOT_USER" &>/dev/null; then
     useradd -m -s /bin/bash -d "$INSTALL_DIR" "$SERVERPILOT_USER"
     usermod -aG "$SERVERPILOT_USER" "$SERVERPILOT_USER"
+  fi
+
+  # Sudoers NOPASSWD para podman (necessário para server-status e containers)
+  local sudoers_file="/etc/sudoers.d/${SERVERPILOT_USER}"
+  if [ ! -f "$sudoers_file" ]; then
+    echo "${SERVERPILOT_USER} ALL=(ALL) NOPASSWD: /usr/bin/podman, /usr/bin/systemctl, /bin/journalctl" > "$sudoers_file"
+    chmod 440 "$sudoers_file"
+    ok "Sudoers configurado (podman + systemctl NOPASSWD)"
   fi
   ok "Usuário $SERVERPILOT_USER"
 
@@ -347,8 +355,20 @@ run_install() {
     git pull origin "$REPO_BRANCH"
   else
     export GIT_TERMINAL_PROMPT=0
-    git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR" 2>/dev/null
+    if [ -n "$GITHUB_TOKEN" ]; then
+      REPO_AUTH="https://${GITHUB_TOKEN}@github.com/felipefernandesdev/serverpilot.git"
+      git clone --branch "$REPO_BRANCH" "$REPO_AUTH" "$INSTALL_DIR"
+    else
+      git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR" 2>/dev/null
+    fi
   fi
+
+  if [ ! -d "$INSTALL_DIR/.git" ]; then
+    err "Falha ao clonar repositório"
+    exit 1
+  fi
+
+  chown -R "$SERVERPILOT_USER:" "$INSTALL_DIR"
   cd "$INSTALL_DIR"
 
   # ── 6b. podman-compose ──────────────────────────────────────────────────
@@ -364,14 +384,16 @@ run_install() {
   header "7/19 — .env"
   ADMIN_PASS=""
   if [ ! -f "$INSTALL_DIR/.env" ]; then
-    JWT_SECRET=$(openssl rand -base64 48)
+    HQ_JWT_SECRET=$(openssl rand -base64 48)
+    PANEL_JWT_SECRET=$(openssl rand -base64 48)
     JWT_REFRESH_SECRET=$(openssl rand -base64 48)
     ADMIN_PASS=$(openssl rand -base64 16)
     DB_PASS=$(openssl rand -base64 16)
 
     cat > "$INSTALL_DIR/.env" << ENVEOF
 DATABASE_URL="postgresql://serverpilot:${DB_PASS}@localhost:5432/serverpilot?schema=public"
-JWT_SECRET="${JWT_SECRET}"
+HQ_JWT_SECRET="${HQ_JWT_SECRET}"
+PANEL_JWT_SECRET="${PANEL_JWT_SECRET}"
 JWT_EXPIRATION="15m"
 JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}"
 JWT_REFRESH_EXPIRATION="7d"
@@ -390,6 +412,16 @@ ENVEOF
   else
     ADMIN_PASS=$(grep ADMIN_PASSWORD "$INSTALL_DIR/.env" | cut -d= -f2)
     warn ".env já existe — mantido"
+
+    # Sincronizar senha do banco se o .env foi recriado mas DB já existe
+    local env_db_pass
+    env_db_pass=$(grep DATABASE_URL "$INSTALL_DIR/.env" | sed "s/.*:\(.*\)@.*/\1/")
+    local pg_pass
+    pg_pass=$(sudo -u postgres psql -tAc "SELECT rolpassword FROM pg_authid WHERE rolname='serverpilot'" 2>/dev/null | head -c 16)
+    if [ -n "$env_db_pass" ] && [ -n "$pg_pass" ] && [ "$pg_pass" != "$env_db_pass" ]; then
+      sudo -u postgres psql -c "ALTER USER serverpilot WITH PASSWORD '${env_db_pass}';" 2>/dev/null
+      ok "Senha PostgreSQL sincronizada com .env"
+    fi
   fi
 
   # ── 8. Banco de dados ────────────────────────────────────────────────────
@@ -420,8 +452,12 @@ ENVEOF
 
   # ── 11. Seed ────────────────────────────────────────────────────────────
   header "11/19 — Seed de dados"
-  read -rp "  Executar seed com dados de exemplo? (s/N): " DO_SEED
-  if [[ "$DO_SEED" =~ ^[Ss]$ ]]; then
+  if [ "$DO_SEED" = false ]; then
+    read -rp "  Executar seed com dados de exemplo? (s/N): " DO_SEED_INPUT
+    [[ "$DO_SEED_INPUT" =~ ^[Ss]$ ]] && DO_SEED=true
+  fi
+  if [ "$DO_SEED" = true ]; then
+    cd "$INSTALL_DIR"
     npx ts-node --transpile-only prisma/seed.ts 2>&1 | tail -10
     ok "Seed concluído"
   else
@@ -471,7 +507,6 @@ ENVEOF
   ufw allow ssh
   ufw allow http
   ufw allow https
-  ufw allow 5432/tcp comment 'PostgreSQL'
   ufw --force enable
   ok "UFW configurado"
 
@@ -500,26 +535,35 @@ ENVEOF
 
   # ── 18. Healthcheck ──────────────────────────────────────────────────────
   header "19/19 — Verificação"
-  sleep 5
+  sleep 8
 
-  for svc in serverpilot-server-hq serverpilot-admin; do
+  ALL_ACTIVE=true
+  for svc in serverpilot-server-hq serverpilot-admin serverpilot-site-panel serverpilot-web; do
     if systemctl is-active --quiet "$svc" 2>/dev/null; then
       ok "$svc: ativo"
     else
       warn "$svc: inativo — journalctl -u $svc -n 30"
+      ALL_ACTIVE=false
     fi
   done
 
   ADMIN_PASS=${ADMIN_PASS:-$(grep ADMIN_PASSWORD "$INSTALL_DIR/.env" | cut -d= -f2)}
 
-  # Testar API
+  # Testar API (admin)
   local _admin_email
   _admin_email=$(grep ADMIN_EMAIL "$INSTALL_DIR/.env" | cut -d= -f2)
   local login_res
   login_res=$(curl -sf http://127.0.0.1:3001/api/auth/login -X POST \
     -H 'Content-Type: application/json' \
     -d '{"email":"'"$_admin_email"'","password":"'"$ADMIN_PASS"'"}' 2>/dev/null) && \
-    ok "API respondendo" || warn "API não respondeu — verifique .env e logs"
+    ok "API Admin (3001) respondendo" || warn "API Admin não respondeu — verifique .env e logs"
+
+  # Testar API (painel)
+  local panel_res
+  panel_res=$(curl -sf http://127.0.0.1:3002/api/auth/login -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"client01","password":"client123"}' 2>/dev/null) && \
+    ok "API Painel (3002) respondendo" || warn "API Painel não respondeu"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -527,14 +571,38 @@ ENVEOF
 # ═══════════════════════════════════════════════════════════════════════════
 print_banner
 
+# ── Parsing de flags ─────────────────────────────────────────────────────────
 MODE="${1:-all}"
+DO_SEED=false
+AUTO_CONFIRM=false
 
-# Coleta de variáveis (sempre)
-echo ""
-read -rp "Domínio do Admin (ex: admin.meuservidor.com): " DOMAIN_ADMIN
-read -rp "Domínio do Painel (ex: painel.meuservidor.com): " DOMAIN_PAINEL
-read -rp "Domínio do Webmail (ex: webmail.meuservidor.com): " DOMAIN_WEBMAIL
-read -rp "Email para Let's Encrypt: " SSL_EMAIL
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --domain-admin)    DOMAIN_ADMIN="$2";    shift 2 ;;
+    --domain-painel)   DOMAIN_PAINEL="$2";   shift 2 ;;
+    --domain-webmail)  DOMAIN_WEBMAIL="$2";  shift 2 ;;
+    --email)           SSL_EMAIL="$2";       shift 2 ;;
+    --seed)            DO_SEED=true;         shift ;;
+    --yes|-y)          AUTO_CONFIRM=true;    shift ;;
+    --token)           GITHUB_TOKEN="$2";    shift 2 ;;
+    --install|--analyze|all) shift ;;
+    *)                 shift ;;
+  esac
+done
+
+# ── Coleta interativa (fallback se flags não foram passadas) ─────────────────
+if [ -z "$DOMAIN_ADMIN" ]; then
+  read -rp "Domínio do Admin (ex: admin.meuservidor.com): " DOMAIN_ADMIN
+fi
+if [ -z "$DOMAIN_PAINEL" ]; then
+  read -rp "Domínio do Painel (ex: painel.meuservidor.com): " DOMAIN_PAINEL
+fi
+if [ -z "$DOMAIN_WEBMAIL" ]; then
+  read -rp "Domínio do Webmail (ex: webmail.meuservidor.com): " DOMAIN_WEBMAIL
+fi
+if [ -z "$SSL_EMAIL" ]; then
+  read -rp "Email para Let's Encrypt: " SSL_EMAIL
+fi
 
 # Análise (sempre, exceto --install)
 if [ "$MODE" != "--install" ]; then
@@ -549,13 +617,15 @@ if [ "$MODE" = "--analyze" ]; then
 fi
 
 # Confirmação (modo all)
-if [ "$MODE" != "--install" ]; then
+if [ "$MODE" != "--install" ] && [ "$AUTO_CONFIRM" = false ]; then
   echo ""
   read -rp "Deseja iniciar a instalação? (s/N): " CONFIRM
   if [[ ! "$CONFIRM" =~ ^[Ss]$ ]]; then
     info "Instalação cancelada."
     exit 0
   fi
+elif [ "$MODE" != "--install" ] && [ "$AUTO_CONFIRM" = true ]; then
+  info "Modo automático (--yes) — instalando..."
 fi
 
 # Instalação

@@ -1,7 +1,8 @@
 import * as http from 'http';
 
-const PDNS_API = 'http://127.0.0.1:8081/api/v1/servers/localhost/';
-const PDNS_KEY = 'pdns_api_key_dev';
+const PDNS_BASE = process.env.PDNS_API_URL || 'http://127.0.0.1:8081';
+const PDNS_KEY = process.env.PDNS_API_KEY || 'pdns_api_key_dev';
+const PDNS_API = `${PDNS_BASE}/api/v1/servers/localhost/`;
 
 const agent = new http.Agent({ keepAlive: false });
 
@@ -110,5 +111,19 @@ export class DnsService {
         disabled: r.disabled || false,
       })),
     }));
+  }
+
+  async copyZoneFromDomain(sourceDomain: string, targetDomain: string): Promise<void> {
+    const records = await this.listRecords(sourceDomain);
+    await this.createZone(targetDomain);
+
+    const defaultKeys = ['@', 'www', 'mail'];
+    for (const rec of records) {
+      if (defaultKeys.includes(rec.name)) continue;
+      for (const r of rec.records) {
+        if (r.disabled) continue;
+        await this.addRecord(targetDomain, rec.name, rec.type, r.content, rec.ttl);
+      }
+    }
   }
 }

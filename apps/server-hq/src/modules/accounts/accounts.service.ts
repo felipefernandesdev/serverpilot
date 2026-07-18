@@ -137,7 +137,7 @@ export class AccountsService {
       },
     });
 
-    await this.provisionInfrastructure(account.username, account.domain, dto.password).catch(
+    await this.provisionInfrastructure(account.username, account.domain, dto.password, dto.templateDomain).catch(
       (err) => this.logger.error(`Infra provisioning failed for ${account.username}: ${err.message}`),
     );
 
@@ -251,11 +251,15 @@ export class AccountsService {
     };
   }
 
-  private async provisionInfrastructure(username: string, domain: string, password: string): Promise<void> {
+  private async provisionInfrastructure(username: string, domain: string, password: string, templateDomain?: string): Promise<void> {
+    const dnsPromise = templateDomain
+      ? this.dns.copyZoneFromDomain(templateDomain, domain)
+      : this.dns.createZone(domain);
+
     const results = await Promise.allSettled([
       this.nginx.createVhost(username, domain),
       this.mail.setupDomain(domain),
-      this.dns.createZone(domain),
+      dnsPromise,
     ]);
 
     for (const result of results) {

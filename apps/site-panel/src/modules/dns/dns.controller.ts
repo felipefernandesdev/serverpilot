@@ -33,4 +33,14 @@ export class DnsController {
   ): Promise<void> {
     await this.dnsService.removeRecord(body.domain, body.name, body.type);
   }
+
+  @Post('copy')
+  @HttpCode(HttpStatus.CREATED)
+  async copyZone(
+    @Request() req: any,
+    @Body() body: { sourceDomain: string; targetDomain: string },
+  ): Promise<{ success: boolean }> {
+    await this.dnsService.copyZoneFromDomain(body.sourceDomain, body.targetDomain);
+    return { success: true };
+  }
 }
