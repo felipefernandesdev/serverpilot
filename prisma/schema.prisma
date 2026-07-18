@@ -1,12 +1,12 @@
 // ServerPilot - Prisma Schema
-// Supports PostgreSQL (production) and SQLite (development)
+// PostgreSQL (production), SQLite (dev — troque manualmente)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -414,14 +414,6 @@ ENVEOF
 
   # ── 10. Prisma ──────────────────────────────────────────────────────────
   header "10/19 — Prisma"
-  local _db_provider
-  _db_provider=$(grep 'provider\s*=\s*"[^"]*"' "$INSTALL_DIR/prisma/schema.prisma" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-  local _db_url
-  _db_url=$(grep DATABASE_URL "$INSTALL_DIR/.env" | cut -d= -f2-)
-  if [ "$_db_provider" = "sqlite" ] && echo "$_db_url" | grep -q "^postgresql"; then
-    sed -i 's/provider = "sqlite"/provider = "postgresql"/' "$INSTALL_DIR/prisma/schema.prisma"
-    info "Prisma provider alterado para postgresql"
-  fi
   npx prisma generate 2>/dev/null
   npx prisma db push 2>/dev/null
   ok "Prisma Client + schema aplicado"
