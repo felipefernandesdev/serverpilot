@@ -354,12 +354,11 @@ run_install() {
     git checkout "$REPO_BRANCH"
     git pull origin "$REPO_BRANCH"
   else
-    export GIT_TERMINAL_PROMPT=0
     if [ -n "$GITHUB_TOKEN" ]; then
       REPO_AUTH="https://${GITHUB_TOKEN}@github.com/felipefernandesdev/serverpilot.git"
       git clone --branch "$REPO_BRANCH" "$REPO_AUTH" "$INSTALL_DIR"
     else
-      git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR" 2>/dev/null
+      git clone --branch "$REPO_BRANCH" "$REPO_HTTPS" "$INSTALL_DIR"
     fi
   fi
 
