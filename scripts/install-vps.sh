@@ -385,7 +385,7 @@ run_install() {
     HQ_JWT_SECRET=$(openssl rand -base64 48)
     PANEL_JWT_SECRET=$(openssl rand -base64 48)
     JWT_REFRESH_SECRET=$(openssl rand -base64 48)
-    ADMIN_PASS=$(openssl rand -base64 16)
+    ADMIN_PASS=$(openssl rand -hex 16)
     DB_PASS=$(openssl rand -hex 16)
 
     cat > "$INSTALL_DIR/.env" << ENVEOF
@@ -410,16 +410,16 @@ ENVEOF
   else
     ADMIN_PASS=$(grep ADMIN_PASSWORD "$INSTALL_DIR/.env" | cut -d= -f2)
     warn ".env já existe — mantido"
+  fi
 
-    # Sincronizar senha do banco se o .env foi recriado mas DB já existe
-    local env_db_pass
-    env_db_pass=$(grep DATABASE_URL "$INSTALL_DIR/.env" | sed "s/.*:\(.*\)@.*/\1/")
-    local pg_pass
-    pg_pass=$(sudo -u postgres psql -tAc "SELECT rolpassword FROM pg_authid WHERE rolname='serverpilot'" 2>/dev/null | head -c 16)
-    if [ -n "$env_db_pass" ] && [ -n "$pg_pass" ] && [ "$pg_pass" != "$env_db_pass" ]; then
-      sudo -u postgres psql -c "ALTER USER serverpilot WITH PASSWORD '${env_db_pass}';" 2>/dev/null
-      ok "Senha PostgreSQL sincronizada com .env"
-    fi
+  # Sincronizar senha do PostgreSQL se o usuário já existe (senha pode ter mudado)
+  local env_db_pass
+  env_db_pass=$(grep DATABASE_URL "$INSTALL_DIR/.env" | sed "s/.*:\(.*\)@.*/\1/")
+  local pg_user_exists
+  pg_user_exists=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='serverpilot'" 2>/dev/null || echo "0")
+  if [ "$pg_user_exists" = "1" ] && [ -n "$env_db_pass" ]; then
+    sudo -u postgres psql -c "ALTER USER serverpilot WITH PASSWORD '${env_db_pass}';" 2>/dev/null
+    ok "Senha PostgreSQL sincronizada com .env"
   fi
 
   # ── 9. Banco de dados ────────────────────────────────────────────────────
