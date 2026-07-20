@@ -165,6 +165,17 @@ export class AccountsService {
       (err) => this.logger.error(`Infra deprovisioning failed for ${account.username}: ${err.message}`),
     );
 
+    await this.prisma.emailAccount.deleteMany({ where: { accountId: id } });
+    const databases = await this.prisma.database.findMany({ where: { accountId: id }, select: { id: true } });
+    for (const db of databases) {
+      await this.prisma.databaseUser.deleteMany({ where: { databaseId: db.id } });
+    }
+    await this.prisma.database.deleteMany({ where: { accountId: id } });
+    await this.prisma.subdomain.deleteMany({ where: { accountId: id } });
+    await this.prisma.ftpAccount.deleteMany({ where: { accountId: id } });
+    await this.prisma.cronJob.deleteMany({ where: { accountId: id } });
+    await this.prisma.backup.deleteMany({ where: { accountId: id } });
+
     await this.prisma.account.delete({
       where: { id },
     });

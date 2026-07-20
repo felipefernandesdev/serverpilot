@@ -75,7 +75,18 @@ export class PackagesService {
 
     const updatedPkg = await this.prisma.package.update({
       where: { id },
-      data: dto,
+      data: {
+        name: dto.name,
+        description: dto.description,
+        diskSpace: dto.diskSpace,
+        bandwidth: dto.bandwidth,
+        emailAccounts: dto.emailAccounts,
+        databases: dto.databases,
+        subdomains: dto.subdomains,
+        ftpAccounts: dto.ftpAccounts,
+        SSL: dto.ssl,
+        sshAccess: dto.sshAccess,
+      },
     });
 
     return updatedPkg;

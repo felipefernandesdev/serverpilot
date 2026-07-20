@@ -2,10 +2,15 @@ import { execSync } from 'child_process';
 
 const DOCKER_CMD = () => {
   try {
-    execSync('podman --version', { stdio: 'ignore' });
-    return 'podman';
+    execSync('sudo podman --version', { stdio: 'ignore' });
+    return 'sudo podman';
   } catch {
-    return 'docker';
+    try {
+      execSync('podman --version', { stdio: 'ignore' });
+      return 'podman';
+    } catch {
+      return 'docker';
+    }
   }
 };
 
@@ -14,6 +19,7 @@ const CONTAINERS = {
   postfix: 'serverpilot-postfix',
   dovecot: 'serverpilot-dovecot',
   mariadb: 'serverpilot-mariadb',
+  php: 'serverpilot-php',
 } as const;
 
 export class DockerExecService {

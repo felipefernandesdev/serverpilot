@@ -24,8 +24,10 @@ export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
   @Get()
-  async findAll(@Query('page') page = 1, @Query('limit') limit = 10) {
-    return this.accountsService.findAll(page, limit);
+  async findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    const p = parseInt(page || '1', 10);
+    const l = parseInt(limit || '10', 10);
+    return this.accountsService.findAll(p > 0 ? p : 1, l > 0 ? l : 10);
   }
 
   @Get(':id')

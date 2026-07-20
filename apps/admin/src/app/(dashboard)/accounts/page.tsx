@@ -6,6 +6,7 @@ import {
   Users, Plus, Search, SlidersHorizontal, X, AlertCircle,
   CheckCircle, PauseCircle, PlayCircle, Trash2, Eye,
   HardDrive, Activity, Mail, Database, Globe,
+  AlertTriangle, Clock, Server,
 } from 'lucide-react';
 
 interface Account {
@@ -74,6 +75,13 @@ export default function AccountsPage() {
   const [dnsRecords, setDnsRecords] = useState<DnsRecord[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
+  const [deleteDetail, setDeleteDetail] = useState<AccountDetail | null>(null);
+  const [loadingDeleteInfo, setLoadingDeleteInfo] = useState(false);
+  const [deleteConfirmUsername, setDeleteConfirmUsername] = useState('');
+  const [financialConfirmed, setFinancialConfirmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const getToken = useCallback(() => {
     const t = localStorage.getItem('token');
@@ -177,18 +185,44 @@ export default function AccountsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
+  const confirmDelete = async (account: Account) => {
+    setError('');
+    setDeleteTarget(account);
+    setDeleteConfirmUsername('');
+    setFinancialConfirmed(false);
+    setDeleteDetail(null);
+    setLoadingDeleteInfo(true);
     try {
-      const res = await fetch(`/api/accounts/${id}`, {
+      const res = await fetch(`/api/accounts/${account.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to load account details');
+      setDeleteDetail(await res.json());
+    } catch (err: any) {
+      setError(err.message);
+      setDeleteTarget(null);
+    } finally {
+      setLoadingDeleteInfo(false);
+    }
+  };
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/accounts/${deleteTarget.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to delete');
+      setDeleteTarget(null);
       setShowDetail(null);
       fetchData();
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -351,7 +385,7 @@ export default function AccountsPage() {
                         </button>
                       )}
                       <button
-                        onClick={() => handleDelete(acc.id)}
+                        onClick={() => confirmDelete(acc)}
                         className="p-2 text-surface-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-surface-100 dark:hover:bg-surface-700 rounded-lg transition"
                         title="Delete"
                       >
@@ -518,7 +552,7 @@ export default function AccountsPage() {
                         Unsuspend
                       </button>
                     )}
-                    <button onClick={() => { handleDelete(showDetail.id); }} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-medium">
+                    <button onClick={() => { confirmDelete(showDetail); }} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-medium">
                       Delete
                     </button>
                   </div>
@@ -603,6 +637,128 @@ export default function AccountsPage() {
                 </div>
               ) : null}
             </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-surface-900 dark:text-white">Delete Account</h2>
+                <p className="text-sm text-surface-500 dark:text-surface-400">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {loadingDeleteInfo ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : deleteDetail ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+                  <p className="font-semibold text-surface-900 dark:text-white">{deleteDetail.username}</p>
+                  <p className="text-sm text-surface-500 dark:text-surface-400">{deleteDetail.domain}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-surface-700 dark:text-surface-300">Resources to be deleted:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.emailAccounts?.length || 0} email accounts
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <Database className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.databases?.length || 0} databases
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.subdomains?.length || 0} subdomains
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <Server className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.ftpAccounts?.length || 0} FTP accounts
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.cronJobs?.length || 0} cron jobs
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg flex items-center gap-2">
+                      <HardDrive className="w-4 h-4 text-surface-400" />
+                      <span className="text-sm text-surface-700 dark:text-surface-300">
+                        {deleteDetail.backups?.length || 0} backups
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={financialConfirmed}
+                    onChange={(e) => setFinancialConfirmed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="text-sm text-amber-800 dark:text-amber-300">
+                    I confirm this client has <strong>no pending financial obligations</strong> and I authorize the permanent deletion of all data above.
+                  </span>
+                </label>
+
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                    Type <strong className="text-red-600">{deleteDetail.username}</strong> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmUsername}
+                    onChange={(e) => setDeleteConfirmUsername(e.target.value)}
+                    placeholder={`Type "${deleteDetail.username}" to confirm`}
+                    className="w-full px-4 py-2.5 border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none transition dark:text-white"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(null)}
+                    disabled={deleting}
+                    className="flex-1 px-4 py-2.5 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={executeDelete}
+                    disabled={deleteConfirmUsername !== deleteDetail.username || !financialConfirmed || deleting}
+                    className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl transition font-medium flex items-center justify-center gap-2"
+                  >
+                    {deleting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      'Permanently Delete'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

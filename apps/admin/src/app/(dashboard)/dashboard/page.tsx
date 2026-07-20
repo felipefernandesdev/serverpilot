@@ -13,9 +13,16 @@ interface Stats {
   databases: number;
 }
 
+interface ServerStatus {
+  stats: {
+    disk: { used: string; total: string; percent: number };
+  };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats>({ accounts: 0, packages: 0, users: 0, databases: 0 });
+  const [diskStats, setDiskStats] = useState<{ used: string; total: string; percent: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -27,10 +34,16 @@ export default function DashboardPage() {
 
   const fetchStats = async (token: string) => {
     try {
-      const [accountsRes, packagesRes] = await Promise.all([
+      const [accountsRes, packagesRes, statusRes] = await Promise.all([
         fetch('/api/accounts', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/packages', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/server-status', { headers: { Authorization: `Bearer ${token}` } }),
       ]);
+      if (accountsRes.status === 401 || packagesRes.status === 401 || statusRes.status === 401) {
+        localStorage.removeItem('token');
+        router.push('/login');
+        return;
+      }
       if (!accountsRes.ok || !packagesRes.ok) {
         throw new Error('API returned ' + accountsRes.status);
       }
@@ -42,6 +55,10 @@ export default function DashboardPage() {
         users: 0,
         databases: 0,
       });
+      if (statusRes.ok) {
+        const statusData: ServerStatus = await statusRes.json();
+        setDiskStats(statusData.stats.disk);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch stats');
     } finally {
@@ -57,9 +74,9 @@ export default function DashboardPage() {
     );
   }
 
-  const diskTotal = stats.accounts * 1024;
-  const diskUsed = stats.accounts * 256;
-  const diskPercent = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
+  const diskDisplay = diskStats
+    ? { used: diskStats.used, total: diskStats.total, percent: diskStats.percent }
+    : { used: '-', total: '-', percent: 0 };
 
   return (
     <div className="space-y-8">
@@ -92,8 +109,8 @@ export default function DashboardPage() {
         <StatCard
           icon={<HardDrive className="w-6 h-6" />}
           label="Disk Usage"
-          value={`${(diskUsed / 1024).toFixed(1)} GB`}
-          subtitle={`${diskPercent}% of ${(diskTotal / 1024).toFixed(1)} GB`}
+          value={diskDisplay.used}
+          subtitle={`${diskDisplay.percent}% of ${diskDisplay.total}`}
           color="purple"
         />
         <StatCard

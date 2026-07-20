@@ -8,6 +8,7 @@ import { DomainModule } from './modules/domain/domain.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { SitePreviewModule } from './modules/site-preview/site-preview.module';
 import { DnsModule } from './modules/dns/dns.module';
+import { WpInstallerModule } from './modules/wp-installer/wp-installer.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { DnsModule } from './modules/dns/dns.module';
     MetricsModule,
     SitePreviewModule,
     DnsModule,
+    WpInstallerModule,
   ],
 })
 export class AppModule {}

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Globe, HardDrive, Mail, Database, Activity,
-  ExternalLink, FolderOpen,
+  ExternalLink, FolderOpen, Code2, Loader2, CheckCircle2, XCircle,
 } from 'lucide-react';
 
 interface Account {
@@ -28,12 +28,35 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showViewSite, setShowViewSite] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [wpInstalling, setWpInstalling] = useState(false);
+  const [wpResult, setWpResult] = useState<{success: boolean; siteUrl?: string; adminUrl?: string; error?: string} | null>(null);
 
   useEffect(() => {
     const accountData = localStorage.getItem('account');
     if (accountData) setAccount(JSON.parse(accountData));
     setLoading(false);
   }, []);
+
+  const installWordPress = async () => {
+    if (!account || wpInstalling) return;
+    if (!confirm('Install WordPress on your domain? This will create a database and configure wp-config.php automatically.')) return;
+    setWpInstalling(true);
+    setWpResult(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/wp/install/${account.id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Installation failed');
+      setWpResult({ success: true, siteUrl: data.siteUrl, adminUrl: data.adminUrl });
+    } catch (err: any) {
+      setWpResult({ success: false, error: err.message });
+    } finally {
+      setWpInstalling(false);
+    }
+  };
 
   const handleOpenPreview = async () => {
     const token = localStorage.getItem('token');
@@ -103,6 +126,7 @@ export default function DashboardPage() {
             <QuickAction icon={<Database className="w-5 h-5" />} label="Databases" onClick={() => router.push('/databases')} />
             <QuickAction icon={<Globe className="w-5 h-5" />} label="Subdomains" onClick={() => router.push('/subdomains')} />
             <QuickAction icon={<ExternalLink className="w-5 h-5" />} label="View Site" onClick={() => setShowViewSite(true)} />
+            <QuickAction icon={<Code2 className="w-5 h-5" />} label="Install WordPress" onClick={installWordPress} />
           </div>
         </div>
 
@@ -135,6 +159,56 @@ export default function DashboardPage() {
               </div>
               <button onClick={() => setShowViewSite(false)}
                 className="w-full mt-4 px-4 py-2.5 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 font-medium">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {wpInstalling && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-sm p-6 animate-fade-in text-center">
+              <Loader2 className="w-10 h-10 mx-auto text-emerald-600 animate-spin mb-4" />
+              <h3 className="text-lg font-bold text-surface-900 dark:text-white mb-2">Installing WordPress</h3>
+              <p className="text-sm text-surface-500">Downloading, extracting, and configuring your site...</p>
+            </div>
+          </div>
+        )}
+
+        {wpResult && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setWpResult(null)}>
+            <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-sm p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+              {wpResult.success ? (
+                <>
+                  <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-600 mb-4" />
+                  <h3 className="text-lg font-bold text-surface-900 dark:text-white mb-2 text-center">WordPress Installed!</h3>
+                  <p className="text-sm text-surface-500 text-center mb-6">Complete the setup by visiting your site.</p>
+                  <div className="space-y-3">
+                    <a href={wpResult.siteUrl} target="_blank"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition font-medium">
+                      <ExternalLink className="w-4 h-4" />
+                      View Site
+                    </a>
+                    <a href={wpResult.adminUrl} target="_blank"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition font-medium">
+                      <ExternalLink className="w-4 h-4" />
+                      WP Admin ({wpResult.adminUrl})
+                    </a>
+                    <button onClick={() => setWpResult(null)}
+                      className="w-full px-4 py-2.5 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 font-medium">
+                      Close
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-10 h-10 mx-auto text-red-600 mb-4" />
+                  <h3 className="text-lg font-bold text-surface-900 dark:text-white mb-2 text-center">Installation Failed</h3>
+                  <p className="text-sm text-red-600 text-center mb-6">{wpResult.error}</p>
+                  <button onClick={() => setWpResult(null)}
+                    className="w-full px-4 py-2.5 border border-surface-200 dark:border-surface-700 rounded-xl text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 font-medium">
+                    Close
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

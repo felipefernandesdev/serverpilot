@@ -81,21 +81,30 @@ function parseBytes(value: string | number): string {
   return `${num.toFixed(0)} B`;
 }
 
+const CACHE_TTL = 30_000; // 30 seconds
+
 export class ServerStatusService {
   private cmd: string;
+  private cache: { data: ServerStatus | null; timestamp: number } = { data: null, timestamp: 0 };
 
   constructor() {
     this.cmd = DOCKER_CMD();
   }
 
   getStatus(): ServerStatus {
+    const now = Date.now();
+    if (this.cache.data && now - this.cache.timestamp < CACHE_TTL) {
+      return this.cache.data;
+    }
     const services = this.getServices();
     const stats = this.getResourceStats();
-    return {
+    const result: ServerStatus = {
       services,
       stats,
       lastCheck: new Date().toISOString(),
     };
+    this.cache = { data: result, timestamp: now };
+    return result;
   }
 
   private getServices(): ServiceInfo[] {

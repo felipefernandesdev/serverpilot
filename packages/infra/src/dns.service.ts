@@ -3,6 +3,7 @@ import * as http from 'http';
 const PDNS_BASE = process.env.PDNS_API_URL || 'http://127.0.0.1:8081';
 const PDNS_KEY = process.env.PDNS_API_KEY || 'pdns_api_key_dev';
 const PDNS_API = `${PDNS_BASE}/api/v1/servers/localhost/`;
+const SERVER_IP = process.env.SERVER_PUBLIC_IP || '127.0.0.1';
 
 const agent = new http.Agent({ keepAlive: false });
 
@@ -62,10 +63,10 @@ export class DnsService {
       account: 'serverpilot',
     });
 
-    await this.addRecord(domain, 'www', 'A', '127.0.0.1', 3600);
-    await this.addRecord(domain, '@', 'A', '127.0.0.1', 3600);
+    await this.addRecord(domain, 'www', 'A', SERVER_IP, 3600);
+    await this.addRecord(domain, '@', 'A', SERVER_IP, 3600);
     await this.addRecord(domain, '@', 'MX', `10 mail.${domain}.`, 3600);
-    await this.addRecord(domain, 'mail', 'A', '127.0.0.1', 3600);
+    await this.addRecord(domain, 'mail', 'A', SERVER_IP, 3600);
   }
 
   async deleteZone(domain: string): Promise<void> {

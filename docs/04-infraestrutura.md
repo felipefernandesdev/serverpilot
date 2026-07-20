@@ -1,361 +1,228 @@
 # Infraestrutura do ServerPilot
 
-## Status Atual (Julho 2026)
+## Status Atual (Julho 2026 — Produção)
 
-O projeto é um **protótipo funcional** com UI completa e CRUD em banco de dados, mas **sem gerenciamento real de servidores**. Toda operação que deveria executar comandos no sistema (criar usuário Linux, configurar nginx, provisionar email) está comentada com `TODO`.
+O projeto está rodando em **produção** na VPS `51.161.73.164` (Ubuntu 24.04, 4 GB RAM, 40 GB SSD). Todos os containers de infraestrutura e os services web estão operacionais.
 
-### O que é funcional hoje
+### O que está funcional
 
 | Camada | Status | Detalhes |
 |--------|--------|----------|
 | Autenticação (JWT) | ✅ | Login/logout, refresh token, bcrypt |
-| Admin: Contas CRUD | ✅ | Cria/edita/suspende/deleta registros no banco |
+| Admin: Contas CRUD | ✅ | Cria/edita/suspende/deleta com cascade total |
 | Admin: Pacotes CRUD | ✅ | Planos com limites de recursos |
-| Admin: Server Status | ❌ Mock | Dados falsos, sem métrica real |
-| Client: File Manager | ✅ | Opera no sistema de arquivos real |
-| Client: Editor | ✅ | CodeMirror 6 com syntax highlight |
-| Client: Site Preview | ✅ | Serve arquivos via JWT (API, não nginx) |
-| Client: Email CRUD | ⚠️ Só banco | Cria contas no DB, sem SMTP/IMAP |
-| Client: Database CRUD | ⚠️ Só banco | Cria registros, sem MySQL real |
-| Client: Subdomains CRUD | ⚠️ Só banco | Cria registros, sem DNS real |
+| Admin: Server Status | ✅ | Dados reais (df -BG) com cache de 30s |
+| PowerDNS (DNS) | ✅ | API funcional, zonas criadas/removidas via NestJS |
+| Nginx (vhosts clientes) | ✅ | Container nginx + vhosts automáticos por conta |
+| Postfix (SMTP) | ✅ | Container rodando, domínios virtuais |
+| Dovecot (IMAP/POP3) | ✅ | Container rodando, contas via SQL |
+| SnappyMail (Webmail) | ✅ | Container rodando, setup já configurado |
+| PostgreSQL (compartilhado) | ✅ | Cluster 16 rodando, PowerDNS + App no mesmo banco |
+| Redis (cache/sessão) | ✅ | Container rodando |
+| MariaDB (clientes) | ✅ | Container rodando (porta 3307) |
+| Adminer (DB admin) | ✅ | Container rodando (porta 8082) |
+| SitePanel (cliente) | ✅ | Painel do cliente funcional |
+| Criação automática de conta | ✅ | Nginx vhost + DNS zone + site index criados |
+| Exclusão com cascade | ✅ | Deleta email, database, subdomain, FTP, cron, backup |
+| File Manager | ✅ | Opera no sistema de arquivos real via container |
+| Editor de arquivos | ✅ | CodeMirror 6 |
+| Site Preview | ✅ | Serve arquivos via JWT |
+| SSL (auto-assinado) | ✅ | Cert auto-assinado (Let's Encrypt em 19/07) |
 
-### O que não existe
+### O que não existe / Pendente
 
-- ❌ Servidor web (nginx/Apache) — sites não são servidos de verdade
-- ❌ Servidor email (Postfix/Dovecot) — emails não são entregues
-- ❌ Servidor DNS (PowerDNS) — domínios não resolvem
-- ❌ Database real (MySQL/PostgreSQL para clientes)
-- ❌ FTP
-- ❌ SSL (LetsEncrypt)
-- ❌ Métricas reais
-- ❌ Process manager (systemd/supervisor)
-- ❌ Instalador de produção
-- ❌ Dockerfiles das aplicações
-- ❌ CI/CD
-
----
-
-## Arquitetura Alvo
-
-### Docker como "Servidor Simulado"
-
-Cada serviço de infraestrutura roda em um container Docker. O painel (NestJS) gerencia eles via:
-
-1. **Volumes montados** → escreve/configura arquivos dos serviços
-2. **Docker socket** → `docker exec` para reload/restart
-3. **APIs HTTP** → serviços como PowerDNS têm API REST nativa
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    docker-compose.yml                     │
-├────────────┬───────────┬──────────┬──────────┬───────────┤
-│  postgres  │   redis   │  nginx   │  postfix │  dovecot  │
-│  :5432     │  :6379    │  :80/443 │  :25/587 │  :143/993 │
-├────────────┼───────────┼──────────┼──────────┼───────────┤
-│  mariadb   │ powerdns  │snappymail│ adminer  │  mailhog  │
-│  :3307     │ :53/8081  │  :9001   │  :8080   │  :1025    │
-└────────────┴───────────┴──────────┴──────────┴───────────┘
-         ▲           ▲           ▲           ▲
-         │           │           │           │
-    ┌────┴───────────┴───────────┴───────────┴──────────┐
-    │              apps/server-hq (NestJS)               │
-    │     AccountsService + InfraService (via Docker)    │
-    └────────────────────────┬──────────────────────────┘
-                             │
-    ┌────────────────────────┴──────────────────────────┐
-    │              packages/infra/                       │
-    │  NginxService  MailService  DnsService  DbService  │
-    └────────────────────────────────────────────────────┘
-```
-
-### Serviços Docker Detalhados
-
-#### 1. nginx (servidor web + proxy reverso)
-- **Imagem:** `nginx:alpine`
-- **Portas:** `80:80`, `443:443`
-- **Volumes:**
-  - `nginx_conf.d:/etc/nginx/conf.d/` — vhosts dos clientes
-  - `nginx_html:/var/www/` — document roots
-  - `letsencrypt:/etc/letsencrypt/` — SSL
-- **Gerenciamento:** NestJS escreve arquivos `.conf` e executa `nginx -s reload`
-- **Template de vhost:**
-  ```nginx
-  server {
-      listen 80;
-      server_name {{domain}} www.{{domain}};
-      root /var/www/{{username}}/public_html;
-      index index.html index.htm index.php;
-  }
-  ```
-
-#### 2. postfix (SMTP)
-- **Imagem:** `ubuntu/postfix:latest` ou `richarvey/nginx-php` com postfix
-- **Portas:** `25:25`, `587:587`
-- **Volumes:**
-  - `postfix_config:/etc/postfix/`
-  - `postfix_spool:/var/spool/postfix`
-- **Banco de dados:** Mapas SQL consultam o banco PostgreSQL compartilhado para domínios virtuais e usuários
-- **Entrega:** LMTP para dovecot na porta 24
-
-#### 3. dovecot (IMAP/POP3)
-- **Imagem:** `dovecot/dovecot:latest`
-- **Portas:** `143:143`, `993:993`
-- **Volumes:**
-  - `dovecot_config:/etc/dovecot/`
-  - `mail_data:/var/mail/` — Maildir de cada cliente
-- **Autenticação:** SQL (consulta tabela `email_accounts` do Prisma)
-  ```conf
-  passdb {
-    driver = sql
-    args = /etc/dovecot/dovecot-sql.conf.ext
-  }
-  ```
-- **Password scheme:** `BLF-CRYPT` (bcrypt compatível com hash do Prisma)
-
-#### 4. snappymail (webmail)
-- **Imagem:** `djmaze/snappymail:latest`
-- **Porta:** `9001:80`
-- **Volumes:**
-  - `snappymail_data:/var/lib/snappymail` — config + dados
-- **Configuração:** Auto-config via environment ou admin panel em `/admin/`
-- **Conexão:** IMAP para container `dovecot:143`
-
-#### 5. mariadb (banco de dados para clientes)
-- **Imagem:** `mariadb:lts`
-- **Porta:** `3307:3306` (porta diferente para não conflitar com MySQL local)
-- **Volumes:**
-  - `mariadb_data:/var/lib/mysql`
-- **Gerenciamento:** NestJS executa `mysql -h mariadb -u root -p"$PASS" -e "CREATE DATABASE ..."`
-
-#### 6. powerdns (DNS)
-- **Imagem:** `powerdns/pdns-auth-49:latest`
-- **Portas:** `53:53/tcp`, `53:53/udp`, `8081:8081` (API)
-- **Banco de dados:** PostgreSQL compartilhado
-- **API Key:** `PDNS_API_KEY` — NestJS usa para criar/remover zonas e registros
-- **API REST:**
-  ```bash
-  # Criar zona
-  curl -X POST http://localhost:8081/api/v1/servers/localhost/zones \
-    -H "X-API-Key: $KEY" \
-    -d '{"name":"client01.com.","kind":"Native","nameservers":["ns1.serverpilot.local."]}'
-  ```
+| Item | Status | Motivo |
+|------|--------|--------|
+| Let's Encrypt SSL | ⏳ 19/07 | Rate limit: "5 certificates already issued in 168h" |
+| Compilação otimizada | ⚠️ ts-node | tsx falha com experimentalDecorators, tsc não resolve paths |
+| FTP real | ❌ | Apenas registro no banco |
+| Métricas de uso real | ⚠️ Parcial | Disk real, bandwidth é mock |
+| Backup automático | ❌ | Apenas registro no banco |
 
 ---
 
-## packages/infra/ — Implementação
+## Arquitetura Atual
 
-### Estrutura
+### Visão Geral
 
 ```
-packages/infra/src/
-├── index.ts                    # Barrel export
-├── nginx.service.ts            # Gerenciamento de vhosts
-├── postfix.service.ts          # Gerenciamento de domínios de email
-├── dovecot.service.ts          # Gerenciamento de contas IMAP
-├── dns.service.ts              # Gerenciamento de zonas DNS (PowerDNS API)
-├── database.service.ts         # Provisionamento de MySQL/MariaDB
-└── docker-exec.service.ts      # Utilitário para executar comandos em containers
+Internet
+    │
+    ├── admin.agiliza.host ──► Nginx (host) ──► :3000 (Next.js admin)
+    │                                   └──► /api/ → :3001 (NestJS server-hq)
+    │
+    ├── painel.agiliza.host ──► Nginx (host) ──► :3002 (Next.js site-panel)
+    │                                   └──► /api/ → :3001 (NestJS server-hq)
+    │
+    └── webmail.agiliza.host ──► Nginx (host) ──► :9001 (SnappyMail container)
 ```
 
-### Interfaces (seguindo o `ServerService` do `use-cases`)
+### Containers Podman (docker-compose)
 
-```typescript
-export interface ServerService {
-  createLinuxUser(username: string, password: string): Promise<void>;
-  createDirectory(path: string): Promise<void>;
-  createVirtualHost(username: string, domain: string): Promise<void>;
-  deleteLinuxUser(username: string): Promise<void>;
-  deleteDirectory(path: string): Promise<void>;
-  deleteVirtualHost(username: string): Promise<void>;
-}
+```
+CONTAINER ID  IMAGE                          PORTS                    NAMES
+f8a22c7b83f5  docker.io/library/mariadb:lts  0.0.0.0:3307->3306/tcp  serverpilot-mariadb
+84fea1e72c0c  powerdns/pdns-auth-49:latest   0.0.0.0:53->53/tcp       serverpilot-powerdns
+                                            0.0.0.0:53->53/udp
+                                            0.0.0.0:8081->8081/tcp
+15d373e35b31  myguard-dockerized-postfix     0.0.0.0:25->25/tcp       serverpilot-postfix
+b344bbf5989d  myguard-dockerized-dovecot     0.0.0.0:143->143/tcp     serverpilot-dovecot
+                                            0.0.0.0:993->993/tcp
+a577a8c55e8f  snappymail/snappymail:latest   0.0.0.0:9001->80/tcp     serverpilot-snappymail
+2d6bb4f16433  adminer:latest                 0.0.0.0:8082->8080/tcp   serverpilot-adminer
+d0f39fbdde2e  redis:7-alpine                 0.0.0.0:6379->6379/tcp   serverpilot-redis
+b66512c1369b  nginx:alpine                   0.0.0.0:8080->80/tcp     serverpilot-nginx
 ```
 
-### Implementação: DockerExecService
+### Services Systemd
 
-Utilitário central que executa comandos dentro dos containers:
+| Service | Porta | Tech | Usuário |
+|---------|-------|------|---------|
+| `serverpilot-server-hq` | 3001 | NestJS (ts-node) | serverpilot |
+| `serverpilot-admin` | 3000 | Next.js | serverpilot |
+| `serverpilot-site-panel` | 3002 | Next.js | serverpilot |
+| `podman-compose@docker` | — | Podman Compose | serverpilot |
 
-```typescript
-class DockerExecService {
-  async exec(container: string, cmd: string): Promise<string> {
-    const full = `docker exec ${container} sh -c ${escape(cmd)}`;
-    const { stdout } = await execAsync(full);
-    return stdout;
-  }
-}
+### Fluxo de Criação de Conta
+
+```
+POST /api/accounts → AccountsService.create()
+  ├── 1. Cria registro no PostgreSQL (Prisma)
+  ├── 2. Cria vhost no nginx (sudo podman exec nginx)
+  │     └── server_name client01.com www.client01.com
+  │     └── proxy_pass para container nginx:80
+  ├── 3. Cria DNS zone no PowerDNS via API
+  │     └── A, MX, www, NS, SOA records
+  ├── 4. Cria site index.html
+  └── 5. Cria diretório do usuário
 ```
 
-### NginxService
+### Fluxo de Exclusão de Conta
 
-```typescript
-class NginxService {
-  async createVhost(username: string, domain: string): Promise<void> {
-    const config = this.renderTemplate(username, domain);
-    await fs.writeFile(`/srv/docker/nginx/conf.d/${username}.conf`, config);
-    await this.dockerExec.exec('serverpilot-nginx', 'nginx -s reload');
-  }
-}
 ```
-
-### MailService (Postfix + Dovecot)
-
-```typescript
-class MailService {
-  async createMailDomain(domain: string): Promise<void> {
-    // 1. Adiciona domínio ao Postfix (virtual_mailbox_domains)
-    await this.postfixService.addDomain(domain);
-    // 2. Cria diretório Maildir no volume do Dovecot
-    await this.dockerExec.exec('serverpilot-dovecot',
-      `mkdir -p /var/mail/${domain}`);
-    // 3. Recarrega Postfix
-    await this.dockerExec.exec('serverpilot-postfix', 'postfix reload');
-    // 4. A autenticação das contas de email é feita via SQL
-    //    (Dovecot lê da tabela email_accounts do Prisma)
-  }
-}
-```
-
-### DnsService
-
-```typescript
-class DnsService {
-  private api = 'http://localhost:8081/api/v1/servers/localhost';
-
-  async createZone(domain: string): Promise<void> {
-    await fetch(`${this.api}/zones`, {
-      method: 'POST',
-      headers: { 'X-API-Key': process.env.PDNS_API_KEY },
-      body: JSON.stringify({
-        name: `${domain}.`,
-        kind: 'Native',
-        nameservers: ['ns1.serverpilot.local.'],
-      }),
-    });
-  }
-
-  async addRecord(zone: string, name: string, type: string, content: string) {
-    await fetch(`${this.api}/zones/${zone}.`, {
-      method: 'PATCH',
-      headers: { 'X-API-Key': process.env.PDNS_API_KEY },
-      body: JSON.stringify({
-        rrsets: [{
-          name: `${name}.${zone}.`,
-          type,
-          ttl: 3600,
-          records: [{ content, disabled: false }],
-        }],
-      }),
-    });
-  }
-}
-```
-
-## Integração com o Ciclo de Vida da Conta
-
-### Criar Conta (antes vs depois)
-
-```typescript
-// ANTES: só banco de dados
-async create(dto) {
-  const account = await this.prisma.account.create({ ... });
-  // TODO: server commands (comentado)
-  return account;
-}
-
-// DEPOIS: banco + infraestrutura real
-async create(dto) {
-  const account = await this.prisma.account.create({ ... });
-
-  await Promise.all([
-    this.serverService.createLinuxUser(dto.username, dto.password),
-    this.serverService.createDirectory(
-      path.join(SERVERPILOT_DATA_DIR, dto.username, 'public_html')
-    ),
-    this.serverService.createVirtualHost(dto.username, dto.domain),
-    this.mailService.createMailDomain(dto.domain),
-    this.dnsService.createZone(dto.domain),
-    this.dnsService.addRecord(dto.domain, 'www', 'A', '127.0.0.1'),
-    this.dnsService.addRecord(dto.domain, '@', 'MX', '10 mail.' + dto.domain),
-  ]);
-
-  return account;
-}
-```
-
-### Deletar Conta
-
-```typescript
-async remove(id) {
-  const account = await this.findById(id);
-  await Promise.all([
-    this.serverService.deleteVirtualHost(account.username),
-    this.serverService.deleteLinuxUser(account.username),
-    this.serverService.deleteDirectory(account.documentRoot),
-    this.mailService.deleteMailDomain(account.domain),
-    this.dnsService.deleteZone(account.domain),
-  ]);
-  await this.prisma.account.delete({ where: { id } });
-}
+DELETE /api/accounts/:id → AccountsService.remove()
+  ├── 1. Deleta email_accounts (cascade)
+  ├── 2. Deleta databases (cascade)
+  ├── 3. Deleta database_users (cascade)
+  ├── 4. Deleta subdomains (cascade)
+  ├── 5. Deleta ftp_accounts (cascade)
+  ├── 6. Deleta cron_jobs (cascade)
+  ├── 7. Deleta backups (cascade)
+  ├── 8. Deleta DNS zone via PowerDNS API
+  ├── 9. Deleta nginx vhost
+  └── 10. Deleta account (Prisma)
 ```
 
 ---
 
-## Funcionalidades no Painel do Cliente
+## Estrutura de Diretórios
 
-### 1. Webmail
-- Botão "Webmail" no dashboard + sidebar
-- Abre SnappyMail em nova aba (`http://localhost:9001`)
-- Cliente loga com as mesmas credenciais de email
+```
+/opt/serverpilot/
+├── apps/
+│   ├── admin/             # Next.js — painel admin (porta 3000)
+│   ├── server-hq/         # NestJS — API principal (porta 3001)
+│   ├── site-panel/        # Next.js — painel cliente (porta 3002)
+│   └── web/               # Site institucional
+├── packages/
+│   └── infra/             # Biblioteca de serviços de infraestrutura
+│       ├── nginx.service.ts
+│       ├── mail.service.ts
+│       ├── dns.service.ts
+│       ├── database.service.ts
+│       ├── docker-exec.service.ts
+│       └── server-status.service.ts
+├── docker/
+│   ├── docker-compose.yml
+│   ├── nginx/             # Configs dos vhosts
+│   ├── postfix/           # Config do Postfix
+│   ├── dovecot/           # Config do Dovecot
+│   └── powerdns/          # Config do PowerDNS
+├── prisma/
+│   ├── schema.prisma
+│   └── seed.ts
+└── scripts/
+    ├── install-vps.sh
+    └── reset-vps.sh
+```
 
-### 2. Site URL Real
-- Modal "View Site" mostra:
-  - "Preview Local" → `/api/site/preview?token=xxx`
-  - "Open Domain" → `http://client01.com` (se DNS configurado)
+---
 
-### 3. Gerenciamento de DNS (Admin + Client)
-- Página de DNS Zones com registros (A, AAAA, CNAME, MX, TXT)
-- CRUD completo via PowerDNS API
+## Configurações Críticas
 
-### 4. Informações de Database
-- Ao criar database, mostra string de conexão real:
-  ```
-  Host: localhost
-  Port: 3307
-  Database: client01_wp
-  User: client01_user
-  Password: ******
-  ```
+### PowerDNS → PostgreSQL
+
+- **Conexão:** direta via IP `10.89.0.1` (interface podman1)
+- **API:** `http://localhost:8081/api/v1/servers/localhost`
+- **Key:** `pdns_6a4846c74734397849c2ea85f2c89a5d`
+- **A records:** usam `SERVER_PUBLIC_IP` env var (51.161.73.164)
+
+### Nginx Externo (host)
+
+- **SSL:** auto-assinado em `/etc/nginx/ssl/serverpilot.{crt,key}`
+- **Catch-all:** `server_name _ default_server` → proxy para `127.0.0.1:8082`
+- **Proxy API:** `/api/` → `127.0.0.1:3001`
+- **Proxy Admin:** `/` → `127.0.0.1:3000`
+- **Proxy Painel:** `/` → `127.0.0.1:3002`
+- **Proxy Webmail:** `/` → `127.0.0.1:9001`
+
+### DockerExecService
+
+- Service roda como `serverpilot` (não root)
+- Precisa de `sudo podman` para comandos em containers
+- Sudoers: `serverpilot ALL=(ALL) NOPASSWD: /usr/bin/podman`
+
+### Cache de Server Status
+
+- Implementado em `packages/infra/src/server-status.service.ts`
+- Cache de 30s usando `Map` simples
+- Reduz resposta de ~20s para ~0.012s
+
+---
+
+## Dados de Acesso
+
+| Sistema | URL | Login |
+|---------|-----|-------|
+| Admin | `https://admin.agiliza.host` | `admin@agiliza.host` / `admin123` |
+| Painel Cliente | `https://painel.agiliza.host` | `client01` / `client123` |
+| Webmail | `https://webmail.agiliza.host` | Conta de email criada no admin |
+| Adminer | `http://51.161.73.164:8082` | `serverpilot` / senha no `.env` |
+| PowerDNS API | `http://51.161.73.164:8081` | Key: `pdns_6a4846c74734397849c2ea85f2c89a5d` |
 
 ---
 
 ## Plano de Implementação
 
-### Fase 1: Infra Docker (dia 1)
+### Fase 1: Infra Docker (dia 1) — ✅ Completo
 - [x] docker-compose.yml base (postgres, redis, mailhog, adminer)
-- [ ] Adicionar nginx + mariadb + postfix + dovecot + snappymail + powerdns
-- [ ] Scripts de inicialização dos containers
-- [ ] Volumes e redes compartilhadas
+- [x] Adicionar nginx + mariadb + postfix + dovecot + snappymail + powerdns
+- [x] Scripts de inicialização dos containers
+- [x] Volumes e redes compartilhadas
 
-### Fase 2: packages/infra/ (dia 1-2)
-- [ ] DockerExecService — utilitário de execução em containers
-- [ ] NginxService — criar/deletar vhosts
-- [ ] MailService — domínios Postfix + contas Dovecot
-- [ ] DnsService — zonas PowerDNS via API
-- [ ] DatabaseService — provisionamento MariaDB
+### Fase 2: packages/infra/ (dia 1-2) — ✅ Completo
+- [x] DockerExecService — utilitário de execução em containers
+- [x] NginxService — criar/deletar vhosts
+- [x] MailService — domínios Postfix + contas Dovecot
+- [x] DnsService — zonas PowerDNS via API
+- [x] DatabaseService — provisionamento MariaDB
 
-### Fase 3: Ciclo de Vida (dia 2)
-- [ ] Integrar ServerService no AccountsService (server-hq)
-- [ ] Criar conta → provisionar tudo
-- [ ] Deletar conta → limpar tudo
-- [ ] Suspender/reativar → nginx disable/enable
+### Fase 3: Ciclo de Vida (dia 2) — ✅ Completo
+- [x] Integrar ServerService no AccountsService (server-hq)
+- [x] Criar conta → provisionar tudo
+- [x] Deletar conta → limpar tudo (cascade)
+- [x] Suspender/reativar → nginx disable/enable
 
-### Fase 4: Frontend (dia 2-3)
-- [ ] Botão Webmail no dashboard + sidebar
-- [ ] Página de DNS management
-- [ ] Strings de conexão reais nos databases
-- [ ] Indicadores de serviço no server status
+### Fase 4: Frontend (dia 2-3) — ✅ Completo
+- [x] Botão Webmail no dashboard + sidebar
+- [x] Página de DNS management
+- [x] Strings de conexão reais nos databases
+- [x] Indicadores de serviço no server status (disk real)
 
 ### Fase 5: Polish (dia 3)
-- [ ] Atualizar seed data para provisionar client01 + client02
-- [ ] Testes de fluxo completo
-- [ ] Documentação atualizada
-- [ ] start.sh atualizado
+- [x] Atualizar seed data para provisionar client01 + client02
+- [x] Testes de fluxo completo
+- [x] Documentação atualizada
+- [ ] Compilação otimizada (tsx ou tsc + paths para dist/)
+- [ ] Let's Encrypt SSL automático (certbot)
+- [ ] Testes automatizados
