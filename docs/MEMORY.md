@@ -1,4 +1,28 @@
 
+## 2026-07-21 — Sessão 8: Correções pós-WordPress + SnappyMail IMAP/SMTP
+
+### O que foi feito
+- **Webmail URL:** `layout.tsx` apontava `http://localhost:9001` — corrigido para `https://webmail.agiliza.host`
+- **SnappyMail IMAP/SMTP:** config estava com `localhost:143` (próprio container). Corrigido para `10.89.0.9:143` (Dovecot) e `10.89.0.8:25` (Postfix) nos arquivos de domínio no volume persistente
+- **SnappyMail SMTP port:** Postfix não escuta na 587 (submission não configurado). Usando porta 25 sem auth por enquanto
+- **WordPress 502 por IP volátil:** container PHP reiniciou com IP novo (10.89.0.26 → 10.89.0.27), `/etc/hosts` do nginx ficou stale. Fix manual, mas o problema persiste — `extra_hosts` no compose precisa ser atualizado com o IP correto sempre que container reiniciar
+- **File Manager API:** funcional com token válido, "Failed to fetch files" é problema de sessão/token expirado, não de código
+
+### Causa raiz
+- SnappyMail guarda config de domínios no volume `snappymail_data/_data_/_default_/domains/*.json`. IMAP apontava `localhost` que dentro do container é ele mesmo. Dovecot está em container separado (10.89.0.9)
+- Porta 587 do Postfix não está ativa — imagem `catatnight/postfix` só escuta 25 por padrão. Submission (587) precisa de config extra
+- IP dos containers no podman muda após restart. `extra_hosts` no compose fica stale
+
+### Pendências (atuais)
+- [ ] IP fixo para containers (podman network com IPAM estático) ou script init que atualiza `/etc/hosts`
+- [ ] Submission (porta 587) no Postfix para SMTP autenticado
+- [ ] DNS externo do container PHP (musl + aardvark-dns) — WP updates/plugins quebrados
+- [ ] DNS público (porta 53 bloqueada OVH)
+- [ ] Compilação otimizada (tsx ou tsc + paths para dist/)
+- [ ] Testes automatizados
+- [ ] FTP/SFTP real
+- [ ] Backup automático
+
 ## 2026-07-19 — Sessão 7: PHP-FPM + WordPress funcional + DNS containers corrigido
 
 ### O que foi feito
