@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
   { href: '/databases', label: 'Databases', icon: Database },
   { href: '/subdomains', label: 'Subdomains', icon: Globe },
   { href: '/dns', label: 'DNS', icon: Globe },
-  { href: 'http://localhost:9001', label: 'Webmail', icon: ExternalLink, external: true },
+  { href: 'https://webmail.agiliza.host', label: 'Webmail', icon: ExternalLink, external: true },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
